@@ -573,69 +573,124 @@ document.addEventListener('DOMContentLoaded', function() {
     // Items management
     addItemForm.addEventListener('submit', async function(e) {
         e.preventDefault();
-        
-        const name = document.getElementById('itemName').value.trim();
-        const assignedTo = document.getElementById('assignedSubAdmin').value;
-
-        if (!name) {
-            showMessage('Please enter an item name.', 'error');
-            return;
-        }
-
-        if (!assignedTo) {
-            showMessage('Please select a sub-admin to assign this item to.', 'error');
-            return;
-        }
 
         try {
+            // Validate form elements exist
+            const itemNameInput = document.getElementById('itemName');
+            const assignedSubAdminSelect = document.getElementById('assignedSubAdmin');
             const submitBtn = e.target.querySelector('button[type="submit"]');
+
+            if (!itemNameInput) {
+                throw new Error('Item name input not found');
+            }
+            if (!assignedSubAdminSelect) {
+                throw new Error('Sub-admin select not found');
+            }
+            if (!submitBtn) {
+                throw new Error('Submit button not found');
+            }
+
+            const name = itemNameInput.value.trim();
+            const assignedTo = assignedSubAdminSelect.value;
+
+            // Validate input values
+            if (!name) {
+                showMessage('Please enter an item name.', 'error');
+                return;
+            }
+
+            if (!assignedTo) {
+                showMessage('Please select a sub-admin to assign this item to.', 'error');
+                return;
+            }
+
+            // Verify user is authenticated
+            if (!auth.currentUser) {
+                throw new Error('User not authenticated');
+            }
+
+            // Verify user has admin role
+            const userSnapshot = await database.ref('users/' + auth.currentUser.uid).once('value');
+            const userData = userSnapshot.val();
+            if (!userData || userData.role !== 'admin') {
+                throw new Error('User does not have admin privileges');
+            }
+
+            // Verify selected sub-admin exists
+            const subAdminSnapshot = await database.ref('users/' + assignedTo).once('value');
+            const subAdminData = subAdminSnapshot.val();
+            if (!subAdminData || subAdminData.role !== 'subadmin') {
+                throw new Error('Selected sub-admin is invalid');
+            }
+
+            // Disable submit button and show loading state
             submitBtn.disabled = true;
             submitBtn.textContent = 'Adding...';
+
+            console.log('Creating new item:', { name, assignedTo });
 
             // Create new item
             const itemRef = database.ref('items').push();
             const itemId = itemRef.key;
 
+            console.log('Generated item ID:', itemId);
+
             // Create the item with required fields
-            await itemRef.set({
+            const itemData = {
                 name: name,
                 price: 0, // Initial price will be 0
                 createdAt: firebase.database.ServerValue.TIMESTAMP,
                 createdBy: auth.currentUser.uid
-            });
+            };
+
+            console.log('Setting item data:', itemData);
+            await itemRef.set(itemData);
 
             // Create the item assignment
-            await database.ref(`items_assignments/${assignedTo}/${itemId}`).set({
+            const assignmentData = {
                 assigned: true,
                 assignedAt: firebase.database.ServerValue.TIMESTAMP,
                 assignedBy: auth.currentUser.uid
-            });
+            };
+
+            console.log('Setting item assignment:', { assignedTo, itemId, assignmentData });
+            await database.ref(`items_assignments/${assignedTo}/${itemId}`).set(assignmentData);
 
             // Add a notification for the sub-admin
-            const notificationRef = database.ref(`notifications/${assignedTo}`).push();
-            await notificationRef.set({
+            const notificationData = {
                 type: 'new_item',
                 itemId: itemId,
                 itemName: name,
                 status: 'unread',
                 timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
+            };
 
+            console.log('Creating notification:', notificationData);
+            const notificationRef = database.ref(`notifications/${assignedTo}`).push();
+            await notificationRef.set(notificationData);
+
+            console.log('Item added successfully');
             showMessage('Item added successfully!', 'success');
             
             // Reset form
-            this.reset();
+            e.target.reset();
             
             // Reload items list
             await loadItems();
             
         } catch (error) {
-            console.error('Error adding item:', error);
-            showMessage('Error adding item: ' + error.message, 'error');
+            console.error('Detailed error adding item:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
+            showMessage(`Error adding item: ${error.message}`, 'error');
         } finally {
             const submitBtn = e.target.querySelector('button[type="submit"]');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Add Item';
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Add Item';
+            }
         }
     });
 
@@ -805,18 +860,43 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load sub-admins into the dropdown when the items section is shown
     async function loadSubAdminsDropdown() {
         try {
+            const dropdown = document.getElementById('assignedSubAdmin');
+            if (!dropdown) {
+                throw new Error('Sub-admin dropdown element not found');
+            }
+
+            console.log('Loading sub-admins for dropdown...');
             const usersSnapshot = await database.ref('users').orderByChild('role').equalTo('subadmin').once('value');
             const subAdmins = usersSnapshot.val() || {};
             
-            const dropdown = document.getElementById('assignedSubAdmin');
-            const options = Object.entries(subAdmins).map(([uid, user]) => 
-                `<option value="${uid}">${user.email}</option>`
-            ).join('');
+            console.log('Found sub-admins:', Object.keys(subAdmins).length);
+            
+            if (Object.keys(subAdmins).length === 0) {
+                dropdown.innerHTML = `
+                    <option value="">No sub-admins available</option>
+                `;
+                showMessage('No sub-admins found. Please add sub-admins first.', 'error');
+                return;
+            }
+            
+            const options = Object.entries(subAdmins).map(([uid, user]) => {
+                if (!user.email) {
+                    console.warn('Sub-admin missing email:', uid);
+                    return '';
+                }
+                return `<option value="${uid}">${user.email}</option>`;
+            }).filter(Boolean).join('');
             
             dropdown.innerHTML = '<option value="">Assign to Sub Admin...</option>' + options;
+            console.log('Sub-admin dropdown updated successfully');
+            
         } catch (error) {
-            console.error('Error loading sub admins for dropdown:', error);
-            showMessage('Error loading sub admins.', 'error');
+            console.error('Detailed error loading sub-admins dropdown:', {
+                message: error.message,
+                code: error.code,
+                stack: error.stack
+            });
+            showMessage('Error loading sub-admins: ' + error.message, 'error');
         }
     }
 
