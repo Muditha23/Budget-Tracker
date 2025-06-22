@@ -17,18 +17,21 @@
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       ".indexOn": ["assignedTo", "status"],
       "$itemId": {
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.child('assignedTo').val() === auth.uid))",
-        ".validate": "newData.hasChildren(['name', 'assignedTo', 'status'])",
+        ".validate": "newData.hasChildren(['name', 'price'])",
         "price": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid",
           ".validate": "newData.isNumber() && newData.val() >= 0"
-        },
-        "status": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid",
-          ".validate": "newData.val() === 'pending_price' || newData.val() === 'active'"
-        },
-        "assignedTo": {
-          ".validate": "root.child('users').child(newData.val()).exists() && root.child('users').child(newData.val()).child('role').val() === 'subadmin'"
+        }
+      }
+    },
+    "items_assignments": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "$itemId": {
+          "assigned": {
+            ".validate": "newData.isBoolean()"
+          }
         }
       }
     },

@@ -437,11 +437,58 @@ document.addEventListener('DOMContentLoaded', function() {
     window.removeFromCart = removeFromCart;
 
     // Initialize interface when user data is available
-    window.initializeSubAdminInterface = function(userDataParam) {
-        userData = userDataParam;
-        updateBudgetDisplay();
-        setupItemsListener();
+    window.initializeSubAdminInterface = async function(userDataParam) {
+        try {
+            // Listen for assigned items
+            listenForAssignedItems(userDataParam.uid);
+            
+            // Initialize budget info
+            await initializeBudgetInfo();
+            
+            // Setup notifications listener
+            setupNotificationsListener();
+            
+            // Load purchase history
+            loadPurchaseHistory();
+        } catch (error) {
+            console.error('Error initializing sub-admin interface:', error);
+            showMessage('Error initializing interface. Please refresh the page.', 'error');
+        }
     };
+
+    function listenForAssignedItems(subAdminUid) {
+        // Listen for assigned items in the items_assignments node
+        database.ref(`items_assignments/${subAdminUid}`).on('value', async (snapshot) => {
+            const assignedItems = snapshot.val() || {};
+            
+            // Get all items details
+            const itemsSnapshot = await database.ref('items').once('value');
+            const allItems = itemsSnapshot.val() || {};
+            
+            // Filter and store only assigned items
+            predefinedItems = {};
+            Object.keys(assignedItems).forEach(itemId => {
+                if (allItems[itemId] && assignedItems[itemId].assigned) {
+                    predefinedItems[itemId] = allItems[itemId];
+                }
+            });
+            
+            // Update the dropdown
+            updatePredefinedItemsDropdown();
+        });
+    }
+
+    function updatePredefinedItemsDropdown() {
+        const select = document.getElementById('predefinedItem');
+        select.innerHTML = '<option value="">Choose an item...</option>';
+        
+        Object.entries(predefinedItems).forEach(([id, item]) => {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = `${item.name} - ${formatCurrency(item.price)}`;
+            select.appendChild(option);
+        });
+    }
 
     // Setup real-time listener for items
     function setupItemsListener() {
@@ -497,14 +544,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Setup notifications listener
         setupNotificationsListener();
-    }
-
-    function updatePredefinedItemsDropdown() {
-        const options = Object.values(predefinedItems).map(item => 
-            `<option value="${item.id}">${item.name} - ${formatCurrency(item.price)}</option>`
-        ).join('');
-        
-        predefinedItem.innerHTML = '<option value="">Choose an item...</option>' + options;
     }
 
     function updatePendingItemsSection(pendingItems) {

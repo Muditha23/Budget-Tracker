@@ -594,20 +594,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Create new item
             const itemRef = database.ref('items').push();
+            const itemId = itemRef.key;
+
+            // Create the item with required fields
             await itemRef.set({
                 name: name,
-                assignedTo: assignedTo,
-                status: 'pending_price',
-                price: null,
+                price: 0, // Initial price will be 0
                 createdAt: firebase.database.ServerValue.TIMESTAMP,
                 createdBy: auth.currentUser.uid
+            });
+
+            // Create the item assignment
+            await database.ref(`items_assignments/${assignedTo}/${itemId}`).set({
+                assigned: true,
+                assignedAt: firebase.database.ServerValue.TIMESTAMP,
+                assignedBy: auth.currentUser.uid
             });
 
             // Add a notification for the sub-admin
             const notificationRef = database.ref(`notifications/${assignedTo}`).push();
             await notificationRef.set({
                 type: 'new_item',
-                itemId: itemRef.key,
+                itemId: itemId,
                 itemName: name,
                 status: 'unread',
                 timestamp: firebase.database.ServerValue.TIMESTAMP
@@ -623,7 +631,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
         } catch (error) {
             console.error('Error adding item:', error);
-            showMessage('Error adding item. Please try again.', 'error');
+            showMessage('Error adding item: ' + error.message, 'error');
         } finally {
             const submitBtn = e.target.querySelector('button[type="submit"]');
             submitBtn.disabled = false;
@@ -633,48 +641,164 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function loadItems() {
         try {
-            const itemsSnapshot = await database.ref('items').once('value');
-            const items = itemsSnapshot.val() || {};
-
-            if (Object.keys(items).length === 0) {
-                itemsList.innerHTML = '<p class="text-gray-500">No items found</p>';
+            // Check if itemsList element exists
+            if (!itemsList) {
+                console.error('Items list element not found');
+                showMessage('Error: Items list element not found', 'error');
                 return;
             }
 
-            // Get sub-admin details for display
-            const usersSnapshot = await database.ref('users').orderByChild('role').equalTo('subadmin').once('value');
-            const subAdmins = usersSnapshot.val() || {};
+            // Show loading state
+            itemsList.innerHTML = '<div class="text-center py-4">Loading items...</div>';
 
-            const itemsHTML = Object.entries(items).map(([id, item]) => `
-                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
-                    <div class="flex-1">
-                        <h4 class="font-medium text-gray-800">${item.name}</h4>
-                        <p class="text-sm text-gray-600">
-                            Price: ${item.price ? formatCurrency(item.price) : '<span class="text-orange-500">Pending price from sub-admin</span>'}
-                        </p>
-                        <p class="text-xs text-gray-500">
-                            Assigned to: ${subAdmins[item.assignedTo]?.email || 'Unknown'}
-                            <br>Created: ${formatDate(item.createdAt)}
-                        </p>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button onclick="reassignItem('${id}', '${item.name}', '${item.assignedTo}')" 
-                                class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">
-                            Reassign
-                        </button>
-                        <button onclick="deleteItem('${id}', '${item.name}')" 
-                                class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition-colors">
-                            Delete
-                        </button>
-                    </div>
-                </div>
-            `).join('');
+            // Load items
+            const itemsSnapshot = await database.ref('items').once('value');
+            const items = itemsSnapshot.val() || {};
+            
+            // Clear existing items list
+            itemsList.innerHTML = '';
+            
+            // Create items table
+            const table = document.createElement('table');
+            table.className = 'min-w-full divide-y divide-gray-200';
+            
+            // Add table header
+            const thead = document.createElement('thead');
+            thead.className = 'bg-gray-50';
+            thead.innerHTML = `
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            `;
+            table.appendChild(thead);
+            
+            // Add table body
+            const tbody = document.createElement('tbody');
+            tbody.className = 'bg-white divide-y divide-gray-200';
+            
+            try {
+                // Get all sub-admins for assignment dropdown
+                const subAdminsSnapshot = await database.ref('users').orderByChild('role').equalTo('subadmin').once('value');
+                const subAdmins = subAdminsSnapshot.val() || {};
+                
+                // Get all item assignments
+                const assignmentsSnapshot = await database.ref('items_assignments').once('value');
+                const assignments = assignmentsSnapshot.val() || {};
+                
+                // Create rows for each item
+                Object.entries(items).forEach(([itemId, item]) => {
+                    const tr = document.createElement('tr');
+                    
+                    // Get current assignments for this item
+                    const itemAssignments = Object.entries(assignments).reduce((acc, [subAdminId, subAdminAssignments]) => {
+                        if (subAdminAssignments[itemId]?.assigned) {
+                            acc.push(subAdminId);
+                        }
+                        return acc;
+                    }, []);
+                    
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">${item.name}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-900">${formatCurrency(item.price)}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <select class="item-assignment-select" data-item-id="${itemId}" multiple>
+                                ${Object.entries(subAdmins).map(([subAdminId, subAdmin]) => `
+                                    <option value="${subAdminId}" ${itemAssignments.includes(subAdminId) ? 'selected' : ''}>
+                                        ${subAdmin.email}
+                                    </option>
+                                `).join('')}
+                            </select>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button class="text-red-600 hover:text-red-900 delete-item-btn" data-item-id="${itemId}">Delete</button>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                console.error('Error loading sub-admins or assignments:', error);
+                showMessage('Error loading sub-admins or assignments: ' + error.message, 'error');
+                return;
+            }
+            
+            table.appendChild(tbody);
+            itemsList.appendChild(table);
+            
+            // Add event listeners for assignment changes
+            document.querySelectorAll('.item-assignment-select').forEach(select => {
+                select.addEventListener('change', async function() {
+                    const itemId = this.dataset.itemId;
+                    const selectedSubAdmins = Array.from(this.selectedOptions).map(option => option.value);
+                    
+                    try {
+                        // Get all sub-admins
+                        const updates = {};
+                        
+                        // First, set all assignments for this item to false
+                        Object.keys(subAdmins).forEach(subAdminId => {
+                            updates[`items_assignments/${subAdminId}/${itemId}/assigned`] = false;
+                        });
+                        
+                        // Then set selected assignments to true
+                        selectedSubAdmins.forEach(subAdminId => {
+                            updates[`items_assignments/${subAdminId}/${itemId}/assigned`] = true;
+                        });
+                        
+                        // Update the database
+                        await database.ref().update(updates);
+                        
+                        showMessage('Item assignments updated successfully');
+                    } catch (error) {
+                        console.error('Error updating item assignments:', error);
+                        showMessage('Error updating item assignments: ' + error.message, 'error');
+                    }
+                });
+            });
+            
+            // Add event listeners for delete buttons
+            document.querySelectorAll('.delete-item-btn').forEach(button => {
+                button.addEventListener('click', async function() {
+                    const itemId = this.dataset.itemId;
+                    if (confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
+                        try {
+                            // Delete item and all its assignments
+                            const updates = {
+                                [`items/${itemId}`]: null
+                            };
+                            
+                            // Remove all assignments for this item
+                            Object.keys(subAdmins).forEach(subAdminId => {
+                                updates[`items_assignments/${subAdminId}/${itemId}`] = null;
+                            });
+                            
+                            await database.ref().update(updates);
+                            
+                            showMessage('Item deleted successfully');
+                            loadItems(); // Reload the items list
+                        } catch (error) {
+                            console.error('Error deleting item:', error);
+                            showMessage('Error deleting item: ' + error.message, 'error');
+                        }
+                    }
+                });
+            });
 
-            itemsList.innerHTML = itemsHTML;
-
+            // Show empty state if no items
+            if (Object.keys(items).length === 0) {
+                itemsList.innerHTML = '<div class="text-center py-4 text-gray-500">No items found</div>';
+            }
+            
         } catch (error) {
             console.error('Error loading items:', error);
-            showMessage('Error loading items.', 'error');
+            showMessage('Error loading items: ' + error.message, 'error');
         }
     }
 
