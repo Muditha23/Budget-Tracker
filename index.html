@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sub Admin - Purchase Form</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <link rel="stylesheet" href="css/modern-styles.css">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="MY WALLET">
+    <link rel="apple-touch-icon" href=".png">
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebarToggle">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+    </button>
+
+    <!-- Sidebar -->
+    <aside class="sidebar glassmorphism" id="sidebar">
+        <div class="sidebar-content">
+            <nav class="sidebar-nav space-y-2">
+                <a href="#" data-section="budget" class="nav-link block p-3 rounded-lg hover:bg-white/50 transition-colors">
+                    <div class="flex items-center space-x-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <span>Budget Overview</span>
+                    </div>
+                </a>
+                <a href="#" data-section="purchase" class="nav-link block p-3 rounded-lg hover:bg-white/50 transition-colors">
+                    <div class="flex items-center space-x-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        <span>Add Purchase</span>
+                    </div>
+                </a>
+                <a href="#" data-section="history" class="nav-link block p-3 rounded-lg hover:bg-white/50 transition-colors">
+                    <div class="flex items-center space-x-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Purchase History</span>
+                    </div>
+                </a>
+                <a href="#" data-section="return" class="nav-link block p-3 rounded-lg hover:bg-white/50 transition-colors">
+                    <div class="flex items-center space-x-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                        </svg>
+                        <span>Return Balance</span>
+                    </div>
+                </a>
+            </nav>
+        </div>
+        <div class="sidebar-footer">
+            <button id="logoutBtn" class="ios-button bg-red-600 w-full">Logout</button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content transition-all duration-300">
+        <!-- Header -->
+        <header class="glassmorphism sticky top-0 z-40">
+            <div class="px-4 py-4">
+                <h1 class="section-title text-xl font-bold text-gray-800" id="sectionTitle">Budget Overview</h1>
+            </div>
+        </header>
+
+        <!-- Content Sections -->
+        <div class="p-4 space-y-6">
+            <!-- Budget Overview Section -->
+            <section id="budget" class="modern-card fade-in section-content active">
+                <div class="p-6">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Budget Overview</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="text-center p-4 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Allocated</p>
+                            <p id="allocatedAmount" class="text-xl font-bold text-blue-600">$0.00</p>
+                        </div>
+                        <div class="text-center p-4 bg-green-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Remaining</p>
+                            <p id="remainingAmount" class="text-xl font-bold text-green-600">$0.00</p>
+                        </div>
+                    </div>
+                    <div class="usage-container">
+                        <div class="usage-labels">
+                            <span>Usage</span>
+                            <span id="usagePercentage">0%</span>
+                        </div>
+                        <div class="usage-bar-container">
+                            <div id="usageBar" class="usage-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Purchase Form Section -->
+            <section id="purchase" class="modern-card fade-in section-content hidden">
+                <div class="p-6">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Add Items</h2>
+                    
+                    <!-- Tab Selection -->
+                    <div class="flex mb-4 bg-gray-100 rounded-lg p-1">
+                        <button id="predefinedTab" class="flex-1 py-2 px-4 rounded-md bg-blue-600 text-white font-medium transition-colors">
+                            Predefined Items
+                        </button>
+                        <button id="customTab" class="flex-1 py-2 px-4 rounded-md text-gray-600 font-medium transition-colors">
+                            Custom Items
+                        </button>
+                    </div>
+
+                    <!-- Forms Container -->
+                    <div class="space-y-4">
+                        <!-- Predefined Items Form -->
+                        <div id="predefinedForm" class="space-y-3">
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Select Item</label>
+                                <select id="predefinedItem" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Choose an item...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                                <input type="text" id="predefinedPrice" readonly 
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50" 
+                                       placeholder="$0.00">
+                            </div>
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                                <input type="number" id="predefinedQuantity" min="1" value="1" 
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div class="mt-2">
+                                <button id="addPredefinedBtn" class="ios-button w-full py-2">
+                                    Add to Cart
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Custom Items Form -->
+                        <div id="customForm" class="space-y-3 hidden">
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
+                                <input type="text" id="customItemName" 
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
+                                       placeholder="Enter item name">
+                            </div>
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                                <input type="number" id="customPrice" step="0.01" min="0" 
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" 
+                                       placeholder="0.00">
+                            </div>
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                                <input type="number" id="customQuantity" min="1" value="1" 
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div class="mt-2">
+                                <button id="addCustomBtn" class="ios-button w-full bg-green-600 py-2">
+                                    Add to Cart
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Shopping Cart Section -->
+                <div class="mt-4">
+                    <div class="modern-card fade-in">
+                        <div class="p-6">
+                            <h2 class="text-lg font-semibold text-gray-800 mb-4">Shopping Cart</h2>
+                            <div id="cartItems" class="space-y-3 mb-4">
+                                <p class="text-gray-500 text-center py-4">Your cart is empty</p>
+                            </div>
+                            <div class="border-t pt-4">
+                                <div class="flex justify-between items-center text-lg font-semibold">
+                                    <span>Total:</span>
+                                    <span id="cartTotal" class="text-blue-600">$0.00</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- History Section -->
+            <section id="history" class="modern-card fade-in section-content hidden">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-lg font-semibold text-gray-800">Purchase History</h2>
+                        <div class="flex space-x-2">
+                            <select id="historyFilter" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="all">All Time</option>
+                                <option value="today">Today</option>
+                                <option value="week">This Week</option>
+                                <option value="month">This Month</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="historyList" class="space-y-4">
+                        <!-- History items will be dynamically added here -->
+                        <div class="animate-pulse">
+                            <div class="h-20 bg-gray-100 rounded-lg mb-4"></div>
+                            <div class="h-20 bg-gray-100 rounded-lg mb-4"></div>
+                            <div class="h-20 bg-gray-100 rounded-lg"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Balance Return Section -->
+            <section id="return" class="modern-card fade-in section-content hidden">
+                <div class="p-6">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Return Balance</h2>
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-1 gap-4">
+                            <div class="text-center p-6 bg-blue-50 rounded-lg">
+                                <p class="text-sm text-gray-600 mb-1">Available Balance to Return</p>
+                                <p id="returnAvailableAmount" class="text-2xl font-bold text-blue-600">$0.00</p>
+                                <p class="text-xs text-gray-500 mt-1">Total Returned: <span id="totalReturnedAmount">$0.00</span></p>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Amount to Return</label>
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">$</span>
+                                    <input type="number" id="returnAmount" step="0.01" min="0" 
+                                           class="w-full pl-8 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                                           placeholder="Enter amount">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                                <textarea id="returnNotes" rows="3" 
+                                          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" 
+                                          placeholder="Add any notes about this return"></textarea>
+                            </div>
+                            <button id="submitReturn" class="ios-button w-full bg-purple-600">
+                                Return Balance
+                            </button>
+                        </div>
+
+                        <div id="returnHistory" class="space-y-4">
+                            <h3 class="text-md font-semibold text-gray-800">Return History</h3>
+                            <div id="returnHistoryList" class="space-y-3">
+                                <!-- Return history will be added here dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Submit Button - Only visible in Purchase section -->
+        <div id="submitButtonContainer" class="fixed bottom-4 left-4 right-4 z-40 hidden">
+            <button id="submitPurchase" disabled 
+                    class="w-full ios-button bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                Submit Purchase
+            </button>
+        </div>
+    </main>
+
+    <!-- Messages -->
+    <div id="successMessage" class="fixed top-4 left-4 right-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg hidden z-50"></div>
+    <div id="errorMessage" class="fixed top-4 left-4 right-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg hidden z-50"></div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/subadmin.js"></script>
+</body>
+</html>
+
