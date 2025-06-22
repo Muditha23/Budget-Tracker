@@ -738,7 +738,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         anchor.addEventListener('click', function (e) {
             e.preventDefault();
-            const section = document.querySelector(this.getAttribute('href'));
+            const href = this.getAttribute('href');
+            if (!href || href === '#') return;
+            
+            const section = document.querySelector(href);
             if (section) {
                 section.scrollIntoView({
                     behavior: 'smooth'
@@ -797,6 +800,8 @@ document.addEventListener('DOMContentLoaded', function() {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const sectionId = link.getAttribute('data-section');
+            if (!sectionId) return;
+            
             showSection(sectionId);
             
             // Add active state to navigation
@@ -810,6 +815,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Handle direct hash navigation
+    window.addEventListener('hashchange', () => {
+        const hash = window.location.hash.slice(1); // Remove the # symbol
+        if (hash && ['budget', 'purchase', 'history'].includes(hash)) {
+            showSection(hash);
+            // Update active state in navigation
+            navLinks.forEach(link => {
+                if (link.getAttribute('data-section') === hash) {
+                    link.classList.add('bg-white/50');
+                } else {
+                    link.classList.remove('bg-white/50');
+                }
+            });
+        }
+    });
+
+    // Check initial hash on page load
+    if (window.location.hash) {
+        const hash = window.location.hash.slice(1);
+        if (['budget', 'purchase', 'history'].includes(hash)) {
+            showSection(hash);
+        }
+    }
 
     // Purchase History functionality
     function loadPurchaseHistory() {
