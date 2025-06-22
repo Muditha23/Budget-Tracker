@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!userData) return;
 
         // Get total allocated and used budget
-        const totalAllocated = userData.totalAllocated || 0;
+        const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
         const remaining = totalAllocated - usedBudget;
         const potentialUsed = usedBudget + cartTotal;
@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateSubmitButton() {
         const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const totalAllocated = userData?.totalAllocated || 0;
+        const totalAllocated = userData?.allocatedBudget || 0;
         const usedBudget = userData?.usedBudget || 0;
         const canSubmit = cart.length > 0 && userData && (usedBudget + total <= totalAllocated);
 
@@ -459,7 +459,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Get user data with used budget
                 const userSnapshot = await database.ref(`users/${uid}`).once('value');
                 userData = userSnapshot.val() || {};
-                userData.totalAllocated = totalAllocated;
+                userData.allocatedBudget = totalAllocated;
 
                 // Update budget display
                 updateBudgetDisplay();
