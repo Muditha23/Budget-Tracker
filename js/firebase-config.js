@@ -36,9 +36,9 @@ function checkUserRoleAndRedirect(user) {
             const userData = snapshot.val();
             if (userData && userData.role) {
                 if (userData.role === 'admin') {
-                    window.location.href = 'index.html';
+                    window.location.href = '/firebase-budget-tracker/index.html';
                 } else if (userData.role === 'subadmin') {
-                    window.location.href = 'sub_index.html';
+                    window.location.href = '/firebase-budget-tracker/sub_admin.html';
                 }
             } else {
                 // Default role assignment or error handling
