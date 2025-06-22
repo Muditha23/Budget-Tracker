@@ -575,10 +575,15 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         
         const name = document.getElementById('itemName').value.trim();
-        const assignedSubAdmin = document.getElementById('assignedSubAdmin').value;
+        const assignedTo = document.getElementById('assignedSubAdmin').value;
 
-        if (!name || !assignedSubAdmin) {
-            showMessage('Please enter item name and select a sub admin.', 'error');
+        if (!name) {
+            showMessage('Please enter an item name.', 'error');
+            return;
+        }
+
+        if (!assignedTo) {
+            showMessage('Please select a sub-admin to assign this item to.', 'error');
             return;
         }
 
@@ -587,14 +592,25 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
             submitBtn.textContent = 'Adding...';
 
-            // Add item to database
-            await database.ref('items').push({
+            // Create new item
+            const itemRef = database.ref('items').push();
+            await itemRef.set({
                 name: name,
-                assignedTo: assignedSubAdmin,
-                price: null, // Price will be set by sub-admin
+                assignedTo: assignedTo,
                 status: 'pending_price',
+                price: null,
                 createdAt: firebase.database.ServerValue.TIMESTAMP,
-                createdBy: authManager.currentUser.uid
+                createdBy: auth.currentUser.uid
+            });
+
+            // Add a notification for the sub-admin
+            const notificationRef = database.ref(`notifications/${assignedTo}`).push();
+            await notificationRef.set({
+                type: 'new_item',
+                itemId: itemRef.key,
+                itemName: name,
+                status: 'unread',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
             });
 
             showMessage('Item added successfully!', 'success');
@@ -973,16 +989,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    window.deleteItem = async function(id, name) {
-        if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    window.deleteItem = async function(itemId, itemName) {
+        if (!confirm(`Are you sure you want to delete "${itemName}"?`)) return;
 
         try {
-            await database.ref('items/' + id).remove();
+            await database.ref(`items/${itemId}`).remove();
             showMessage('Item deleted successfully!', 'success');
             await loadItems();
         } catch (error) {
             console.error('Error deleting item:', error);
-            showMessage('Error deleting item.', 'error');
+            showMessage('Error deleting item. Please try again.', 'error');
         }
     };
 
@@ -1014,29 +1030,53 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     // Add reassign functionality
-    window.reassignItem = async function(id, name, currentAssignedTo) {
+    window.reassignItem = async function(itemId, itemName, currentAssignedTo) {
         try {
-            const usersSnapshot = await database.ref('users').orderByChild('role').equalTo('subadmin').once('value');
-            const subAdmins = usersSnapshot.val() || {};
-            
-            const options = Object.entries(subAdmins)
-                .map(([uid, user]) => `<option value="${uid}" ${uid === currentAssignedTo ? 'selected' : ''}>${user.email}</option>`)
-                .join('');
-            
-            const newAssignedTo = prompt(`Select new sub-admin for "${name}":`, currentAssignedTo);
-            if (!newAssignedTo || newAssignedTo === currentAssignedTo) return;
+            const newAssignedTo = prompt('Enter the UID of the sub-admin to reassign this item to:');
+            if (!newAssignedTo) return;
 
-            await database.ref('items/' + id).update({
-                assignedTo: newAssignedTo,
-                price: null,
-                status: 'pending_price'
-            });
+            // Check if the new assignee exists and is a sub-admin
+            const userSnapshot = await database.ref(`users/${newAssignedTo}`).once('value');
+            const userData = userSnapshot.val();
             
+            if (!userData || userData.role !== 'subadmin') {
+                showMessage('Invalid sub-admin UID. Please try again.', 'error');
+                return;
+            }
+
+            // Update item assignment
+            await database.ref(`items/${itemId}`).update({
+                assignedTo: newAssignedTo,
+                reassignedAt: firebase.database.ServerValue.TIMESTAMP,
+                reassignedBy: auth.currentUser.uid
+            });
+
+            // Add notifications
+            const notifications = {};
+            // Notification for new assignee
+            notifications[`notifications/${newAssignedTo}/${database.ref().push().key}`] = {
+                type: 'item_assigned',
+                itemId: itemId,
+                itemName: itemName,
+                status: 'unread',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+            // Notification for previous assignee
+            notifications[`notifications/${currentAssignedTo}/${database.ref().push().key}`] = {
+                type: 'item_unassigned',
+                itemId: itemId,
+                itemName: itemName,
+                status: 'unread',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            };
+
+            await database.ref().update(notifications);
+
             showMessage('Item reassigned successfully!', 'success');
             await loadItems();
         } catch (error) {
             console.error('Error reassigning item:', error);
-            showMessage('Error reassigning item.', 'error');
+            showMessage('Error reassigning item. Please try again.', 'error');
         }
     };
 

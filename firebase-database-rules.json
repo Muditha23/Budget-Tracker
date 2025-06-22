@@ -15,13 +15,43 @@
     "items": {
       ".read": "auth != null",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".indexOn": ["assignedTo", "status"],
       "$itemId": {
         ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.child('assignedTo').val() === auth.uid))",
+        ".validate": "newData.hasChildren(['name', 'assignedTo', 'status'])",
         "price": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid"
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid",
+          ".validate": "newData.isNumber() && newData.val() >= 0"
         },
         "status": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid"
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid",
+          ".validate": "newData.val() === 'pending_price' || newData.val() === 'active'"
+        },
+        "assignedTo": {
+          ".validate": "root.child('users').child(newData.val()).exists() && root.child('users').child(newData.val()).child('role').val() === 'subadmin'"
+        }
+      }
+    },
+    "notifications": {
+      ".read": "auth != null",
+      "admin": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        ".write": "auth != null",
+        "$notificationId": {
+          ".validate": "newData.hasChildren(['type', 'status', 'timestamp'])"
+        }
+      },
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "$notificationId": {
+          ".validate": "newData.hasChildren(['type', 'status', 'timestamp'])",
+          "status": {
+            ".validate": "newData.val() === 'read' || newData.val() === 'unread'"
+          },
+          "type": {
+            ".validate": "newData.val() === 'new_item' || newData.val() === 'item_assigned' || newData.val() === 'item_unassigned' || newData.val() === 'price_set'"
+          }
         }
       }
     },
@@ -31,7 +61,21 @@
         ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
         ".write": "auth != null && auth.uid === $uid",
         "$purchaseId": {
-          ".validate": "newData.hasChildren(['items', 'totalAmount', 'timestamp', 'userId', 'userEmail'])"
+          ".validate": "newData.hasChildren(['items', 'totalAmount', 'timestamp', 'userId', 'userEmail'])",
+          "totalAmount": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "items": {
+            "$itemId": {
+              ".validate": "newData.hasChildren(['name', 'price', 'quantity'])",
+              "price": {
+                ".validate": "newData.isNumber() && newData.val() >= 0"
+              },
+              "quantity": {
+                ".validate": "newData.isNumber() && newData.val() > 0"
+              }
+            }
+          }
         }
       }
     },
@@ -40,6 +84,14 @@
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "total": {
         ".validate": "newData.isNumber() && newData.val() >= 0"
+      },
+      "additions": {
+        "$additionId": {
+          ".validate": "newData.hasChildren(['amount', 'timestamp', 'adminId', 'adminEmail'])",
+          "amount": {
+            ".validate": "newData.isNumber() && newData.val() > 0"
+          }
+        }
       }
     },
     "budget_allocations": {
@@ -48,7 +100,13 @@
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
         "$allocationId": {
-          ".validate": "newData.hasChildren(['amount', 'timestamp', 'type'])"
+          ".validate": "newData.hasChildren(['amount', 'timestamp', 'type'])",
+          "amount": {
+            ".validate": "newData.isNumber() && newData.val() > 0"
+          },
+          "type": {
+            ".validate": "newData.val() === 'allocation' || newData.val() === 'reversal'"
+          }
         }
       }
     }

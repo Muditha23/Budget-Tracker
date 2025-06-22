@@ -464,73 +464,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Handle items that need prices
                     const pendingItems = Object.entries(items).filter(([_, item]) => 
-                        item.status === 'pending_price' || item.price === null
+                        item.status === 'pending_price' || !item.price || item.price === null
                     );
 
                     // Handle items with prices set (predefined items)
                     predefinedItems = Object.entries(items).reduce((acc, [id, item]) => {
                         if (item.price !== null && item.status === 'active') {
-                            acc[id] = item;
+                            acc[id] = {
+                                id: id,
+                                name: item.name,
+                                price: item.price,
+                                status: item.status
+                            };
                         }
                         return acc;
                     }, {});
 
                     // Update predefined items dropdown
-                    const options = Object.keys(predefinedItems).map(id => 
-                        `<option value="${id}">${predefinedItems[id].name} - ${formatCurrency(predefinedItems[id].price)}</option>`
-                    ).join('');
-                    
-                    predefinedItem.innerHTML = '<option value="">Choose an item...</option>' + options;
+                    updatePredefinedItemsDropdown();
 
-                    // Update pending items section
-                    let container = document.querySelector('.container');
-                    if (!container) {
-                        container = document.querySelector('.p-4'); // Fallback to main content div
-                    }
+                    // Update pending items section if it exists
+                    updatePendingItemsSection(pendingItems);
 
-                    if (container) {
-                        // Remove existing pending section if it exists
-                        const existingSection = document.getElementById('pendingItemsSection');
-                        if (existingSection) {
-                            existingSection.remove();
-                        }
-
-                        if (pendingItems.length > 0) {
-                            // Create new pending items section
-                            const pendingSection = document.createElement('div');
-                            pendingSection.id = 'pendingItemsSection';
-                            pendingSection.className = 'bg-white rounded-lg shadow-sm p-4 mb-6';
-                            
-                            pendingSection.innerHTML = `
-                                <h2 class="text-lg font-semibold text-gray-800 mb-4">Items Requiring Price</h2>
-                                <div class="space-y-3">
-                                    ${pendingItems.map(([id, item]) => `
-                                        <div class="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
-                                            <div class="flex-1">
-                                                <h4 class="font-medium text-gray-800">${item.name}</h4>
-                                                <p class="text-sm text-gray-600">Assigned by admin</p>
-                                            </div>
-                                            <div class="flex items-center space-x-2">
-                                                <div class="relative">
-                                                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">$</span>
-                                                    <input type="number" id="price_${id}" placeholder="0.00" min="0" step="0.01"
-                                                           class="w-32 pl-8 pr-3 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
-                                                </div>
-                                                <button onclick="setItemPrice('${id}')"
-                                                        class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">
-                                                    Set Price
-                                                </button>
-                                            </div>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            `;
-
-                            // Insert at the top of the container
-                            const firstChild = container.firstChild;
-                            container.insertBefore(pendingSection, firstChild);
-                        }
-                    }
                 } catch (error) {
                     console.error('Error processing items update:', error);
                     showMessage('Error updating items. Please refresh the page.', 'error');
@@ -539,9 +494,68 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error setting up items listener:', error);
                 showMessage('Error connecting to database. Please refresh the page.', 'error');
             });
+
+        // Setup notifications listener
+        setupNotificationsListener();
     }
 
-    // Add function to set item price
+    function updatePredefinedItemsDropdown() {
+        const options = Object.values(predefinedItems).map(item => 
+            `<option value="${item.id}">${item.name} - ${formatCurrency(item.price)}</option>`
+        ).join('');
+        
+        predefinedItem.innerHTML = '<option value="">Choose an item...</option>' + options;
+    }
+
+    function updatePendingItemsSection(pendingItems) {
+        // Find or create the pending items section
+        let pendingSection = document.getElementById('pendingItemsSection');
+        const container = document.querySelector('.p-4') || document.body;
+
+        // Remove existing section if no pending items
+        if (pendingItems.length === 0) {
+            if (pendingSection) {
+                pendingSection.remove();
+            }
+            return;
+        }
+
+        // Create new section if it doesn't exist
+        if (!pendingSection) {
+            pendingSection = document.createElement('div');
+            pendingSection.id = 'pendingItemsSection';
+            pendingSection.className = 'bg-white rounded-lg shadow-sm p-4 mb-6';
+            container.insertBefore(pendingSection, container.firstChild);
+        }
+
+        // Update section content
+        pendingSection.innerHTML = `
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Items Requiring Price</h2>
+            <div class="space-y-3">
+                ${pendingItems.map(([id, item]) => `
+                    <div class="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+                        <div class="flex-1">
+                            <h4 class="font-medium text-gray-800">${item.name}</h4>
+                            <p class="text-sm text-gray-600">Assigned by admin</p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">$</span>
+                                <input type="number" id="price_${id}" placeholder="0.00" min="0" step="0.01"
+                                       class="w-32 pl-8 pr-3 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <button onclick="setItemPrice('${id}')"
+                                    class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition-colors">
+                                Set Price
+                            </button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    // Function to set item price
     window.setItemPrice = async function(itemId) {
         try {
             const priceInput = document.getElementById(`price_${itemId}`);
@@ -555,7 +569,20 @@ document.addEventListener('DOMContentLoaded', function() {
             await database.ref(`items/${itemId}`).update({
                 price: price,
                 status: 'active',
-                priceSetAt: firebase.database.ServerValue.TIMESTAMP
+                priceSetAt: firebase.database.ServerValue.TIMESTAMP,
+                priceSetBy: currentUser.uid
+            });
+
+            // Add notification for admin
+            const notificationRef = database.ref(`notifications/admin`).push();
+            await notificationRef.set({
+                type: 'price_set',
+                itemId: itemId,
+                price: price,
+                subAdminId: currentUser.uid,
+                subAdminEmail: currentUser.email,
+                status: 'unread',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
             });
 
             showMessage('Price set successfully!', 'success');
@@ -564,6 +591,33 @@ document.addEventListener('DOMContentLoaded', function() {
             showMessage('Error setting price. Please try again.', 'error');
         }
     };
+
+    // Setup notifications listener
+    function setupNotificationsListener() {
+        if (!currentUser) return;
+
+        const notificationsRef = database.ref(`notifications/${currentUser.uid}`);
+        notificationsRef.on('child_added', async (snapshot) => {
+            const notification = snapshot.val();
+            if (notification.status === 'unread') {
+                // Mark as read
+                await snapshot.ref.update({ status: 'read' });
+                
+                // Show notification
+                switch (notification.type) {
+                    case 'new_item':
+                        showMessage(`New item "${notification.itemName}" has been assigned to you.`, 'success');
+                        break;
+                    case 'item_assigned':
+                        showMessage(`Item "${notification.itemName}" has been assigned to you.`, 'success');
+                        break;
+                    case 'item_unassigned':
+                        showMessage(`Item "${notification.itemName}" has been unassigned from you.`, 'info');
+                        break;
+                }
+            }
+        });
+    }
 
     // Cleanup function for when the page is unloaded
     window.addEventListener('unload', () => {
