@@ -1,0 +1,56 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "role": {
+          ".validate": "newData.val() === 'admin' || newData.val() === 'subadmin'"
+        }
+      }
+    },
+    "items": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$itemId": {
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.child('assignedTo').val() === auth.uid))",
+        "price": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid"
+        },
+        "status": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'subadmin' && data.parent().child('assignedTo').val() === auth.uid"
+        }
+      }
+    },
+    "purchases": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && auth.uid === $uid",
+        "$purchaseId": {
+          ".validate": "newData.hasChildren(['items', 'totalAmount', 'timestamp', 'userId', 'userEmail'])"
+        }
+      }
+    },
+    "budget": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "total": {
+        ".validate": "newData.isNumber() && newData.val() >= 0"
+      }
+    },
+    "budget_allocations": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "$allocationId": {
+          ".validate": "newData.hasChildren(['amount', 'timestamp', 'type'])"
+        }
+      }
+    }
+  }
+} 

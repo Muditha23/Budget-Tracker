@@ -34,11 +34,13 @@ document.addEventListener('DOMContentLoaded', function() {
     let cart = [];
     let predefinedItems = {};
     let userData = null;
+    let currentUser = null;
 
     // Initialize Firebase Auth
     auth.onAuthStateChanged(async (user) => {
         if (user) {
             try {
+                currentUser = user;
                 // Get user data
                 const userSnapshot = await database.ref('users/' + user.uid).once('value');
                 userData = userSnapshot.val();
@@ -60,6 +62,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 showLoginError('Error initializing interface. Please try again.');
             }
         } else {
+            currentUser = null;
+            userData = null;
             // Show login, hide main content
             loginSection.classList.remove('hidden');
             mainContent.classList.add('hidden');
@@ -365,7 +369,38 @@ document.addEventListener('DOMContentLoaded', function() {
             this.disabled = true;
             this.textContent = 'Processing...';
 
-            await subAdminAuth.submitPurchase(cart);
+            // Create a new purchase entry
+            const purchaseRef = database.ref('purchases/' + currentUser.uid).push();
+            const timestamp = firebase.database.ServerValue.TIMESTAMP;
+
+            // Calculate total amount
+            const totalAmount = cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+
+            // Create purchase data
+            const purchaseData = {
+                items: cart.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    type: item.type
+                })),
+                totalAmount: totalAmount,
+                timestamp: timestamp,
+                userId: currentUser.uid,
+                userEmail: currentUser.email
+            };
+
+            // Update user's used budget
+            const userRef = database.ref('users/' + currentUser.uid);
+            const currentUsedBudget = userData.usedBudget || 0;
+            const newUsedBudget = currentUsedBudget + totalAmount;
+
+            // Perform the updates
+            await Promise.all([
+                purchaseRef.set(purchaseData),
+                userRef.update({ usedBudget: newUsedBudget })
+            ]);
             
             showMessage('Purchase submitted successfully!', 'success');
             
@@ -375,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateSubmitButton();
             
             // Refresh user data
-            const userSnapshot = await database.ref('users/' + subAdminAuth.currentUser.uid).once('value');
+            const userSnapshot = await database.ref('users/' + currentUser.uid).once('value');
             userData = userSnapshot.val();
             updateBudgetDisplay();
 
@@ -388,8 +423,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Logout
-    logoutBtn.addEventListener('click', () => {
-        subAdminAuth.logout();
+    logoutBtn.addEventListener('click', async () => {
+        try {
+            await auth.signOut();
+        } catch (error) {
+            console.error('Error signing out:', error);
+            showMessage('Error signing out. Please try again.', 'error');
+        }
     });
 
     // Global functions for cart management (called from HTML)
@@ -405,7 +445,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Setup real-time listener for items
     function setupItemsListener() {
-        if (!subAdminAuth.currentUser) {
+        if (!currentUser) {
             console.error('User not authenticated');
             return;
         }
@@ -417,7 +457,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Create a new reference and listener
         window.itemsRef = database.ref('items');
-        window.itemsRef.orderByChild('assignedTo').equalTo(subAdminAuth.currentUser.uid)
+        window.itemsRef.orderByChild('assignedTo').equalTo(currentUser.uid)
             .on('value', async (snapshot) => {
                 try {
                     const items = snapshot.val() || {};
