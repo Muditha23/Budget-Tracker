@@ -488,15 +488,26 @@ document.addEventListener('DOMContentLoaded', function() {
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Calculate total allocated budget (original amount given by admin)
-                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
-                }, 0);
-
-                // Calculate available balance (allocated minus returns)
-                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
-                }, 0);
+                // Calculate total allocated budget (considering both allocations and reversals)
+                let totalAllocated = 0;
+                let availableBalance = 0;
+                
+                // Sort allocations by timestamp to process them in chronological order
+                const sortedAllocations = Object.values(allocations)
+                    .sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Process allocations in order
+                sortedAllocations.forEach(allocation => {
+                    if (allocation.type === 'reversal') {
+                        // For reversals, subtract from both total and available
+                        totalAllocated -= allocation.amount;
+                        availableBalance -= allocation.amount;
+                    } else {
+                        // For new allocations, add to both total and available
+                        totalAllocated += allocation.amount;
+                        availableBalance += allocation.amount;
+                    }
+                });
 
                 // Update user data in memory and database
                 userData = {

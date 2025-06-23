@@ -120,10 +120,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const allocationsSnapshot = await database.ref('budget_allocations').once('value');
             const allocations = allocationsSnapshot.val() || {};
 
-            // Calculate totals from allocations
+            // Calculate totals from allocations (considering both allocations and reversals)
             let totalAllocated = 0;
+            
+            // Process each sub-admin's allocations
             Object.values(allocations).forEach(userAllocations => {
-                Object.values(userAllocations).forEach(allocation => {
+                // Sort allocations by timestamp
+                const sortedAllocations = Object.values(userAllocations)
+                    .sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Process allocations in order
+                sortedAllocations.forEach(allocation => {
                     if (allocation.type === 'reversal') {
                         totalAllocated -= allocation.amount;
                     } else {
@@ -205,13 +212,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusHTML = subAdminArray.map(([uid, user]) => {
             const userAllocations = allocations[uid] || {};
             
-            // Calculate total allocated budget (sum of allocations minus returns)
+            // Sort allocations by timestamp to process them in chronological order
+            const sortedAllocations = Object.values(userAllocations)
+                .sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Calculate total allocated budget and current balance
             let totalAllocated = 0;
-            Object.values(userAllocations).forEach(allocation => {
+            let currentBalance = 0;
+            
+            // Process allocations in order
+            sortedAllocations.forEach(allocation => {
                 if (allocation.type === 'reversal') {
+                    // For reversals, subtract from both total and current
                     totalAllocated -= allocation.amount;
+                    currentBalance -= allocation.amount;
                 } else {
+                    // For new allocations, add to both total and current
                     totalAllocated += allocation.amount;
+                    currentBalance += allocation.amount;
                 }
             });
 
@@ -220,11 +238,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const returnedAmount = user.returnedBudget || 0;
             
             // Calculate remaining balance
-            const remainingBalance = totalAllocated - actualSpentBudget - returnedAmount;
+            const remainingBalance = currentBalance - actualSpentBudget - returnedAmount;
             
-            // Calculate usage percentage based on spent vs allocated (excluding returns)
-            const effectiveAllocation = totalAllocated - returnedAmount;
-            const usagePercent = effectiveAllocation > 0 ? (actualSpentBudget / effectiveAllocation) * 100 : 0;
+            // Calculate usage percentage based on spent vs current balance
+            const usagePercent = currentBalance > 0 ? (actualSpentBudget / currentBalance) * 100 : 0;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -232,7 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="grid grid-cols-2 gap-4 flex-1">
                         <div>
                             <p class="font-medium text-gray-800">${user.email}</p>
-                            <p class="text-sm text-gray-600">Allocated: ${formatCurrency(totalAllocated)}</p>
+                            <p class="text-sm text-gray-600">Current Balance: ${formatCurrency(currentBalance)}</p>
                             <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
                         </div>
                         <div>
@@ -260,10 +277,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const totalBudget = budgetSnapshot.val() || 0;
             const allocations = allocationsSnapshot.val() || {};
 
-            // Calculate total allocated to sub-admins (same logic as in loadBudgetData)
+            // Calculate total allocated to sub-admins (considering both allocations and reversals)
             let totalAllocated = 0;
+            
+            // Process each sub-admin's allocations
             Object.values(allocations).forEach(userAllocations => {
-                Object.values(userAllocations).forEach(allocation => {
+                // Sort allocations by timestamp
+                const sortedAllocations = Object.values(userAllocations)
+                    .sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Process allocations in order
+                sortedAllocations.forEach(allocation => {
                     if (allocation.type === 'reversal') {
                         totalAllocated -= allocation.amount;
                     } else {
@@ -711,8 +735,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Calculate total allocated to sub-admins (considering both allocations and reversals)
             let totalAllocated = 0;
+            
+            // Process each sub-admin's allocations
             Object.values(allocations).forEach(userAllocations => {
-                Object.values(userAllocations).forEach(allocation => {
+                // Sort allocations by timestamp
+                const sortedAllocations = Object.values(userAllocations)
+                    .sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Process allocations in order
+                sortedAllocations.forEach(allocation => {
                     if (allocation.type === 'reversal') {
                         totalAllocated -= allocation.amount;
                     } else {
