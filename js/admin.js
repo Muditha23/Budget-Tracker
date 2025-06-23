@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
             let totalAllocated = 0;
             Object.values(allocations).forEach(userAllocations => {
                 Object.values(userAllocations).forEach(allocation => {
-                    if (allocation.type === 'return') {
+                    if (allocation.type === 'reversal') {
                         totalAllocated -= allocation.amount;
                     } else {
                         totalAllocated += allocation.amount;
@@ -205,33 +205,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusHTML = subAdminArray.map(([uid, user]) => {
             const userAllocations = allocations[uid] || {};
             
-            // Sort allocations by timestamp to process them in chronological order
-            const sortedAllocations = Object.values(userAllocations)
-                .sort((a, b) => a.timestamp - b.timestamp);
-            
-            // Calculate total allocated budget considering full returns as resets
+            // Calculate total allocated budget (sum of allocations minus returns)
             let totalAllocated = 0;
-            sortedAllocations.forEach(allocation => {
-                if (allocation.type === 'return') {
-                    // If this is a full return (matches current total), reset the total
-                    if (allocation.amount >= totalAllocated) {
-                        totalAllocated = 0;
-                    } else {
-                        totalAllocated -= allocation.amount;
-                    }
+            Object.values(userAllocations).forEach(allocation => {
+                if (allocation.type === 'reversal') {
+                    totalAllocated -= allocation.amount;
                 } else {
                     totalAllocated += allocation.amount;
                 }
             });
 
-            // Get the actual spent amount
+            // Get the actual spent amount and returns
             const actualSpentBudget = user.usedBudget || 0;
+            const returnedAmount = user.returnedBudget || 0;
             
             // Calculate remaining balance
-            const remainingBalance = totalAllocated - actualSpentBudget;
+            const remainingBalance = totalAllocated - actualSpentBudget - returnedAmount;
             
-            // Calculate usage percentage based on spent vs allocated
-            const usagePercent = totalAllocated > 0 ? (actualSpentBudget / totalAllocated) * 100 : 0;
+            // Calculate usage percentage based on spent vs allocated (excluding returns)
+            const effectiveAllocation = totalAllocated - returnedAmount;
+            const usagePercent = effectiveAllocation > 0 ? (actualSpentBudget / effectiveAllocation) * 100 : 0;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -243,7 +236,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
                         </div>
                         <div>
-                            <p class="text-sm text-gray-600">Returned: ${formatCurrency(Math.abs(totalAllocated < 0 ? totalAllocated : 0))}</p>
+                            <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedAmount)}</p>
                             <p class="text-sm font-medium text-blue-600">Remaining: ${formatCurrency(remainingBalance)}</p>
                             <p class="text-sm font-medium ${statusColor}">Usage: ${Math.round(usagePercent)}%</p>
                         </div>
@@ -271,7 +264,7 @@ document.addEventListener('DOMContentLoaded', function() {
             let totalAllocated = 0;
             Object.values(allocations).forEach(userAllocations => {
                 Object.values(userAllocations).forEach(allocation => {
-                    if (allocation.type === 'return') {
+                    if (allocation.type === 'reversal') {
                         totalAllocated -= allocation.amount;
                     } else {
                         totalAllocated += allocation.amount;
@@ -408,7 +401,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Calculate total allocated budget from allocations
                 const userAllocations = allocations[uid] || {};
                 const totalAllocated = Object.values(userAllocations).reduce((sum, allocation) => {
-                    if (allocation.type === 'return') {
+                    if (allocation.type === 'reversal') {
                         return sum - allocation.amount;
                     }
                     return sum + allocation.amount;
@@ -461,24 +454,24 @@ document.addEventListener('DOMContentLoaded', function() {
         return historyArray.map(allocation => `
             <div class="text-sm p-2 border-b border-gray-200 last:border-0">
                 <div class="flex justify-between items-center">
-                    <span class="font-medium ${allocation.type === 'return' ? 'text-red-600' : 'text-green-600'}">
-                        ${allocation.type === 'return' ? '-' : '+'}${formatCurrency(allocation.amount)}
+                    <span class="font-medium ${allocation.type === 'reversal' ? 'text-red-600' : 'text-green-600'}">
+                        ${allocation.type === 'reversal' ? '-' : '+'}${formatCurrency(allocation.amount)}
                     </span>
                     <div class="flex items-center gap-2">
                         <span class="text-gray-500">${formatDate(allocation.timestamp)}</span>
-                        ${allocation.type !== 'return' ? `
+                        ${allocation.type !== 'reversal' ? `
                             <button 
-                                onclick="window.returnBudget('${allocation.id}', ${allocation.amount}, '${subAdminUid}', '${subAdminEmail}')"
+                                onclick="window.reverseAllocation('${allocation.id}', ${allocation.amount}, '${subAdminUid}', '${subAdminEmail}')"
                                 class="text-red-600 hover:text-red-800 text-xs bg-red-100 px-2 py-1 rounded"
-                                title="Return this allocation">
-                                Return
+                                title="Reverse this allocation">
+                                Reverse
                             </button>
                         ` : ''}
                     </div>
                 </div>
                 <p class="text-gray-600 text-xs">
-                    ${allocation.type === 'return' 
-                        ? `Returned to: ${allocation.adminEmail} (Original allocation: ${formatDate(allocation.originalAllocationTime)})`
+                    ${allocation.type === 'reversal' 
+                        ? `Reversed by: ${allocation.adminEmail} (Original allocation: ${formatDate(allocation.originalAllocationTime)})`
                         : `Allocated by: ${allocation.adminEmail}`}
                 </p>
             </div>
@@ -716,27 +709,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const subAdmins = usersSnapshot.val() || {};
             const allocations = allocationsSnapshot.val() || {};
 
-            // Calculate total allocated to sub-admins (considering both allocations and returns)
+            // Calculate total allocated to sub-admins (considering both allocations and reversals)
             let totalAllocated = 0;
             Object.values(allocations).forEach(userAllocations => {
-                // Sort allocations by timestamp
-                const sortedAllocations = Object.values(userAllocations)
-                    .sort((a, b) => a.timestamp - b.timestamp);
-                
-                // Calculate user's current allocation after full returns
-                let userCurrentAllocation = 0;
-                sortedAllocations.forEach(allocation => {
-                    if (allocation.type === 'return') {
-                        if (allocation.amount >= userCurrentAllocation) {
-                            userCurrentAllocation = 0;
-                        } else {
-                            userCurrentAllocation -= allocation.amount;
-                        }
+                Object.values(userAllocations).forEach(allocation => {
+                    if (allocation.type === 'reversal') {
+                        totalAllocated -= allocation.amount;
                     } else {
-                        userCurrentAllocation += allocation.amount;
+                        totalAllocated += allocation.amount;
                     }
                 });
-                totalAllocated += userCurrentAllocation;
             });
 
             // Update budget overview
@@ -776,34 +758,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const budgetHTML = Object.entries(subAdmins).map(([uid, user]) => {
                 const userAllocations = allocations[uid] || {};
                 
-                // Sort allocations by timestamp
-                const sortedAllocations = Object.values(userAllocations)
-                    .sort((a, b) => a.timestamp - b.timestamp);
-                
-                // Calculate total allocated considering full returns as resets
+                // Calculate total allocated (sum of allocations minus reversals)
                 let totalAllocatedToUser = 0;
-                sortedAllocations.forEach(allocation => {
-                    if (allocation.type === 'return') {
-                        if (allocation.amount >= totalAllocatedToUser) {
-                            totalAllocatedToUser = 0;
-                        } else {
-                            totalAllocatedToUser -= allocation.amount;
-                        }
+                Object.values(userAllocations).forEach(allocation => {
+                    if (allocation.type === 'reversal') {
+                        totalAllocatedToUser -= allocation.amount;
                     } else {
                         totalAllocatedToUser += allocation.amount;
                     }
                 });
                 
                 const used = user.usedBudget || 0;
+                const returned = user.returnedBudget || 0;
+                const remaining = totalAllocatedToUser - used - returned;
                 
-                // Calculate remaining balance
-                const remaining = totalAllocatedToUser - used;
-                
-                // Calculate returned amount from negative allocation
-                const returned = Math.abs(totalAllocatedToUser < 0 ? totalAllocatedToUser : 0);
-                
-                // Calculate usage percentage based on allocated amount
-                const usagePercent = totalAllocatedToUser > 0 ? (used / totalAllocatedToUser) * 100 : 0;
+                // Calculate usage percentage based on effective allocation (excluding returns)
+                const effectiveAllocation = totalAllocatedToUser - returned;
+                const usagePercent = effectiveAllocation > 0 ? (used / effectiveAllocation) * 100 : 0;
                 
                 return `
                     <div class="bg-gray-50 rounded-lg p-4">
@@ -989,9 +960,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Add the returnBudget function to the window object
-    window.returnBudget = async function(allocationId, amount, subAdminUid, subAdminEmail) {
-        if (!confirm(`Are you sure you want to return the allocation of ${formatCurrency(amount)} from ${subAdminEmail}?`)) {
+    // Add the reverseAllocation function to the window object
+    window.reverseAllocation = async function(allocationId, amount, subAdminUid, subAdminEmail) {
+        if (!confirm(`Are you sure you want to reverse the allocation of ${formatCurrency(amount)} from ${subAdminEmail}?`)) {
             return;
         }
 
@@ -1009,8 +980,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error('Original allocation not found');
             }
 
-            if (originalAllocation.type === 'return') {
-                throw new Error('Cannot return a return');
+            if (originalAllocation.type === 'reversal') {
+                throw new Error('Cannot reverse a reversal');
             }
             
             // Get sub-admin's current used budget
@@ -1029,52 +1000,52 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Calculate total allocated budget including all allocations and reversals
             const totalAllocated = Object.values(allocations).reduce((sum, alloc) => {
-                if (alloc.type === 'return') {
+                if (alloc.type === 'reversal') {
                     return sum - alloc.amount;
                 }
                 return sum + alloc.amount;
             }, 0);
 
-            // Check if return would make budget negative
-            if (totalAllocated + amount < usedBudget) {
-                const errorMsg = `Cannot return allocation. Sub-admin has already used ${formatCurrency(usedBudget)} of their budget. Available to return: ${formatCurrency(totalAllocated - usedBudget)}`;
+            // Check if reversal would make budget negative
+            if (totalAllocated - amount < usedBudget) {
+                const errorMsg = `Cannot reverse allocation. Sub-admin has already used ${formatCurrency(usedBudget)} of their budget. Available to reverse: ${formatCurrency(totalAllocated - usedBudget)}`;
                 showMessage(errorMsg, 'error');
-                console.error('Return validation failed:', {
+                console.error('Reversal validation failed:', {
                     totalAllocated,
                     amount,
                     usedBudget,
-                    availableToReturn: totalAllocated - usedBudget
+                    availableToReverse: totalAllocated - usedBudget
                 });
                 return;
             }
 
-            // Create return data
-            const returnData = {
+            // Create reversal data
+            const reversalData = {
                 amount: amount,
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 adminId: currentUser.uid,
                 adminEmail: currentUser.email,
-                type: 'return',
+                type: 'reversal',
                 originalAllocationId: allocationId,
                 originalAllocationTime: originalAllocation.timestamp,
                 subAdminUid: subAdminUid,
                 subAdminEmail: subAdminEmail,
-                notes: `Return of ${formatCurrency(amount)} allocated on ${formatDate(originalAllocation.timestamp)}`
+                notes: `Reversal of ${formatCurrency(amount)} allocated on ${formatDate(originalAllocation.timestamp)}`
             };
 
-            console.log('Creating return with data:', returnData);
+            console.log('Creating reversal with data:', reversalData);
             
-            // Create a new return reference
-            const returnRef = database.ref(`budget_allocations/${subAdminUid}`).push();
+            // Create a new reversal reference
+            const reversalRef = database.ref(`budget_allocations/${subAdminUid}`).push();
             
-            // Simply set the return data
-            await returnRef.set(returnData);
+            // Simply set the reversal data
+            await reversalRef.set(reversalData);
 
-            showMessage('Budget allocation returned successfully!', 'success');
+            showMessage('Budget allocation reversed successfully!', 'success');
             await loadSubAdmins(); // Reload the list
             
         } catch (error) {
-            console.error('Detailed error in returnBudget:', {
+            console.error('Detailed error in reverseAllocation:', {
                 error,
                 allocationId,
                 amount,
@@ -1084,7 +1055,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 message: error.message
             });
             
-            let errorMessage = 'Error returning allocation. ';
+            let errorMessage = 'Error reversing allocation. ';
             if (error.message) {
                 errorMessage += error.message;
             }
@@ -1155,7 +1126,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 let totalAllocated = 0;
                 Object.values(allocations).forEach(userAllocations => {
                     Object.values(userAllocations).forEach(allocation => {
-                        if (allocation.type === 'return') {
+                        if (allocation.type === 'reversal') {
                             totalAllocated -= allocation.amount;
                         } else {
                             totalAllocated += allocation.amount;
