@@ -229,14 +229,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                 }).join('');
             
+            // Format the budget values
+            const formattedTotal = formatCurrency(totalAllocated);
+            const formattedUsed = formatCurrency(usedBudget);
+            const formattedReturned = formatCurrency(returnedBudget);
+            const formattedAvailable = formatCurrency(availableBalance);
+            
             return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
                         <p class="font-medium text-gray-800">${user.email}</p>
-                        <p class="text-sm text-gray-600">Total Allocated: ${formatCurrency(totalAllocated)}</p>
-                        <p class="text-sm text-gray-600">Used: ${formatCurrency(usedBudget)}</p>
-                        <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedBudget)}</p>
-                        <p class="text-sm text-gray-600">Available: ${formatCurrency(availableBalance)}</p>
+                        <p class="text-sm text-gray-600">Total Allocated: ${formattedTotal}</p>
+                        <p class="text-sm text-gray-600">Used: ${formattedUsed}</p>
+                        <p class="text-sm text-gray-600">Returned: ${formattedReturned}</p>
+                        <p class="text-sm text-gray-600">Available: ${formattedAvailable}</p>
                         <div class="mt-2 border-t pt-1">
                             ${recentTransactions}
                         </div>
@@ -250,6 +256,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }).join('');
 
         subAdminStatus.innerHTML = statusHTML;
+
+        // Force a refresh of the dashboard data after a short delay
+        setTimeout(() => {
+            loadDashboardData();
+        }, 1000);
     }
 
     // Main Account Balance functions
@@ -1269,53 +1280,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 adminEmail: adminUser.email
             };
 
-            // Update database
-            await database.ref().transaction((data) => {
-                if (data === null) return data;
-
-                const currentAllocated = data.users[subAdminUid].allocatedBudget || 0;
-                const isFullReversal = amount >= currentAllocated;
-
-                // Add reversal record
-                if (!data.budget_allocations) {
-                    data.budget_allocations = {};
-                }
-                if (!data.budget_allocations[subAdminUid]) {
-                    data.budget_allocations[subAdminUid] = {};
-                }
-                const reversalId = `reversal_${timestamp}`;
-                data.budget_allocations[subAdminUid][reversalId] = reversalRecord;
-
-                // Update user's budget tracking
-                if (isFullReversal) {
-                    // If reversing full amount, reset all budget values
-                    data.users[subAdminUid] = {
-                        ...data.users[subAdminUid],
-                        allocatedBudget: 0,
-                        availableBalance: 0,
-                        returnedBudget: 0,
-                        lastReversalAmount: amount,
-                        lastReversalTimestamp: timestamp
-                    };
-                } else {
-                    // Partial reversal
-                    data.users[subAdminUid] = {
-                        ...data.users[subAdminUid],
-                        allocatedBudget: currentAllocated - parseFloat(amount),
-                        availableBalance: (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount),
-                        lastReversalAmount: amount,
-                        lastReversalTimestamp: timestamp
-                    };
-                }
-
-                return data;
+            // First, update the user's budget directly
+            await database.ref(`users/${subAdminUid}`).update({
+                allocatedBudget: 0,
+                availableBalance: 0,
+                returnedBudget: 0
             });
 
-            // Force refresh the user data
-            await database.ref(`users/${subAdminUid}`).once('value');
-            
-            // Reload dashboard with fresh data
-            await loadDashboardData();
+            // Then add the reversal record
+            await database.ref(`budget_allocations/${subAdminUid}/reversal_${timestamp}`).set(reversalRecord);
+
+            // Force refresh all relevant data
+            await Promise.all([
+                database.ref(`users/${subAdminUid}`).once('value'),
+                loadDashboardData()
+            ]);
+
             showMessage('Budget reversed successfully');
         } catch (error) {
             console.error('Error reversing budget:', error);

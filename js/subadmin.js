@@ -209,26 +209,26 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Calculate usage percentage based on actual spending against total allocated
         const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
-        const usagePercent = totalAllocated > 0 ? ((usedBudget / totalAllocated) * 100) : 0;
+        const usagePercent = (usedBudget / effectiveAllocated) * 100;
 
-        // Update UI elements with proper currency formatting
-        document.getElementById('totalAllocated').textContent = formatCurrency(totalAllocated);
-        document.getElementById('spentOnPurchases').textContent = formatCurrency(usedBudget);
-        document.getElementById('availableForSpending').textContent = formatCurrency(availableBalance);
-        document.getElementById('purchaseUsage').textContent = Math.round(usagePercent) + '%';
+        // Update UI elements
+        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        remainingAmount.textContent = formatCurrency(remainingBalance);
+        spentAmount.textContent = formatCurrency(usedBudget);
+        usagePercentage.textContent = Math.round(usagePercent) + '%';
 
-        // Update usage bar
-        const usageBarElement = document.getElementById('usageBar');
-        if (usageBarElement) {
-            usageBarElement.style.width = Math.min(usagePercent, 100) + '%';
-            
-            if (usagePercent >= 90) {
-                usageBarElement.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
-            } else if (usagePercent >= 80) {
-                usageBarElement.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
-            } else {
-                usageBarElement.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
-            }
+        // Update usage bar color based on percentage
+        usageBar.style.width = Math.min(usagePercent, 100) + '%';
+        
+        if (usagePercent >= 90) {
+            usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-red-600';
+        } else if (usagePercent >= 80) {
+            usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-yellow-600';
+        } else {
+            usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-green-600';
         }
     }
 
@@ -459,24 +459,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // Set up real-time listener for user data changes
-            database.ref(`users/${uid}`).on('value', (snapshot) => {
-                userData = snapshot.val();
-                updateBudgetDisplay();
-            });
-
             // Set up real-time listener for budget allocations
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Get fresh user data
-                const freshUserSnapshot = await database.ref(`users/${uid}`).once('value');
-                const freshUserData = freshUserSnapshot.val();
-                
-                if (freshUserData) {
-                    userData = freshUserData;
-                    updateBudgetDisplay();
-                }
+                // Calculate total allocated budget (original amount given by admin)
+                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
+                }, 0);
+
+                // Calculate available balance (allocated minus returns)
+                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                }, 0);
+
+                // Update user data in memory and database
+                userData = {
+                    ...userData,
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                };
+
+                // Update the database with new values
+                await database.ref(`users/${uid}`).update({
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                });
+
+                // Update budget display
+                updateBudgetDisplay();
                 
                 // Generate and display budget history
                 generateBudgetHistory(allocations);
