@@ -1,5 +1,18 @@
 // Sub Admin Interface Implementation
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Firebase Auth
+    const auth = firebase.auth();
+    
+    // Get current authenticated user
+    async function getCurrentUser() {
+        return new Promise((resolve, reject) => {
+            const unsubscribe = auth.onAuthStateChanged(user => {
+                unsubscribe();
+                resolve(user);
+            }, reject);
+        });
+    }
+
     // Initialize authentication
     const subAdminAuth = new SubAdminAuth();
     
@@ -298,10 +311,16 @@ document.addEventListener('DOMContentLoaded', function() {
     window.removeFromCart = removeFromCart;
 
     // Initialize interface when user data is available
-    window.initializeSubAdminInterface = function(userDataParam) {
-        userData = userDataParam;
-        updateBudgetDisplay();
-        setupItemsListener();
+    window.initializeSubAdminInterface = async function(userDataParam) {
+        try {
+            userData = userDataParam;
+            await updateBudgetInfo();
+            await loadPurchaseHistory();
+            setupItemsListener();
+        } catch (error) {
+            console.error('Error during initialization:', error);
+            showMessage('Error initializing page', 'error');
+        }
     };
 
     // Setup real-time listener for items
@@ -448,11 +467,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize budget info
     async function initializeBudgetInfo() {
         try {
-            const user = await getCurrentUser();
-            if (!user) return;
+            if (!subAdminAuth.currentUser) return;
 
             // Get user data including budget info
-            const userRef = database.ref(`users/${user.uid}`);
+            const userRef = database.ref(`users/${subAdminAuth.currentUser.uid}`);
             const userSnapshot = await userRef.once('value');
             userData = userSnapshot.val();
 
@@ -467,7 +485,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateBudgetDisplay();
                 
                 // Load budget history
-                const allocationsRef = database.ref(`budget_allocations/${user.uid}`);
+                const allocationsRef = database.ref(`budget_allocations/${subAdminAuth.currentUser.uid}`);
                 allocationsRef.once('value').then(snapshot => {
                     const allocations = snapshot.val() || {};
                     generateBudgetHistory(allocations);
@@ -478,7 +496,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateBudgetDisplay();
             
             // Load budget history
-            const allocationsRef = database.ref(`budget_allocations/${user.uid}`);
+            const allocationsRef = database.ref(`budget_allocations/${subAdminAuth.currentUser.uid}`);
             const allocationsSnapshot = await allocationsRef.once('value');
             const allocations = allocationsSnapshot.val() || {};
             generateBudgetHistory(allocations);
@@ -530,8 +548,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function returnBudget(amount, notes = '') {
         try {
-            const user = await getCurrentUser();
-            if (!user) throw new Error('User not authenticated');
+            if (!subAdminAuth.currentUser) throw new Error('User not authenticated');
 
             // Check if amount is valid
             if (!amount || amount <= 0) {
@@ -544,7 +561,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Create return request
-            const returnRef = database.ref(`balance_returns/${user.uid}`).push();
+            const returnRef = database.ref(`balance_returns/${subAdminAuth.currentUser.uid}`).push();
             await returnRef.set({
                 amount: amount,
                 timestamp: Date.now(),
@@ -553,7 +570,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             // Update user's available balance
-            const userRef = database.ref(`users/${user.uid}`);
+            const userRef = database.ref(`users/${subAdminAuth.currentUser.uid}`);
             await userRef.update({
                 availableBalance: userData.availableBalance - amount,
                 returnedBudget: (userData.returnedBudget || 0) + amount
@@ -569,11 +586,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Call initializeBudgetInfo after authentication
-    firebase.auth().onAuthStateChanged(function(user) {
+    // Initialize the page
+    auth.onAuthStateChanged(async (user) => {
         if (user) {
-            initializeBudgetInfo();
-            setupItemsListener();
+            try {
+                await initializeBudgetInfo();
+                await loadPurchaseHistory();
+                setupItemsListener();
+            } catch (error) {
+                console.error('Error during initialization:', error);
+                showMessage('Error initializing page', 'error');
+            }
+        } else {
+            // Redirect to login page if not authenticated
+            window.location.href = '/login.html';
         }
     });
 
@@ -895,62 +921,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Create a reversal allocation
             const allocationRef = database.ref(`budget_allocations/${uid}`).push();
-            const allocationData = {
-                amount: amount,
+            await allocationRef.set({
+                amount: -amount,
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 type: 'reversal',
-                notes: `Balance returned${returnNotes.value.trim() ? ': ' + returnNotes.value.trim() : ''}`
-            };
-
-            // Update user's data - keep original allocated budget but update available balance
-            const updatedAvailableBalance = (userData.availableBalance || 0) - amount;
-
-            // Perform updates atomically
-            await database.ref().update({
-                [`balance_returns/${uid}/${returnRef.key}`]: returnData,
-                [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData,
-                [`users/${uid}/availableBalance`]: updatedAvailableBalance
+                adminId: adminId
             });
 
-            // Reset form
-            returnAmount.value = '';
-            returnNotes.value = '';
-            showMessage('Balance successfully returned', 'success');
+            // Update user's available balance
+            await userRef.update({
+                availableBalance: userData.availableBalance - amount,
+                returnedBudget: (userData.returnedBudget || 0) + amount
+            });
 
+            showMessage('Return processed successfully');
+            
+            // Refresh budget display
+            await initializeBudgetInfo();
         } catch (error) {
-            console.error('Error returning balance:', error);
-            showMessage('Error returning balance', 'error');
+            console.error('Error processing return:', error);
+            showMessage(error.message, 'error');
         }
     });
 
-    // Update return history display
-    function updateReturnHistory(returns) {
-        if (!returns || Object.keys(returns).length === 0) {
-            returnHistoryList.innerHTML = '<p class="text-gray-500 text-center py-4">No return history</p>';
-            return;
-        }
-
-        const historyArray = Object.entries(returns)
-            .map(([id, ret]) => ({...ret, id}))
-            .sort((a, b) => b.timestamp - a.timestamp);
-
-        returnHistoryList.innerHTML = historyArray.map(ret => `
-            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                <div class="flex justify-between items-start mb-2">
-                    <div>
-                        <div class="font-medium text-gray-900">Return #${ret.id.slice(-6)}</div>
-                        <div class="text-sm text-gray-500">${new Date(ret.timestamp).toLocaleString()}</div>
-                    </div>
-                    <div class="text-lg font-semibold text-purple-600">${formatCurrency(ret.amount)}</div>
-                </div>
-                ${ret.notes ? `<p class="text-sm text-gray-600 mt-2">${ret.notes}</p>` : ''}
-            </div>
-        `).join('');
+    // Initialize the page when authentication is ready
+    if (typeof window.initializeSubAdminInterface === 'undefined') {
+        window.initializeSubAdminInterface = async function(userData) {
+            try {
+                await initializeBudgetInfo();
+                await loadPurchaseHistory();
+                setupItemsListener();
+            } catch (error) {
+                console.error('Error during initialization:', error);
+                showMessage('Error initializing page', 'error');
+            }
+        };
     }
-
-    // Initialize return section when showing it
-    document.querySelector('[data-section="return"]').addEventListener('click', () => {
-        initializeReturnSection();
-    });
 });
-
