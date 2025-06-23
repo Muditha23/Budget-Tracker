@@ -94,6 +94,25 @@
                             <p id="remainingAmount" class="text-xl font-bold text-green-600">$0.00</p>
                         </div>
                     </div>
+                    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="text-center p-4 bg-purple-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Voluntarily Returned</p>
+                            <p id="returnedAmount" class="text-xl font-bold text-purple-600">$0.00</p>
+                            <p class="text-xs text-gray-500 mt-1">Money you sent back to admin</p>
+                        </div>
+                        <div class="text-center p-4 bg-red-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Admin Reversed</p>
+                            <p id="reversedAmount" class="text-xl font-bold text-red-600">$0.00</p>
+                            <p class="text-xs text-gray-500 mt-1">Money taken back by admin</p>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                            <p class="text-sm text-gray-600">Current Total Budget</p>
+                            <p id="originalAllocation" class="text-xl font-bold text-yellow-600">$0.00</p>
+                            <p class="text-xs text-gray-500 mt-1">Total after all admin allocations and reversals</p>
+                        </div>
+                    </div>
                     <div class="usage-container mt-6">
                         <div class="usage-labels">
                             <span>Purchase Usage</span>
