@@ -204,26 +204,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const statusHTML = subAdminArray.map(([uid, user]) => {
             const userAllocations = allocations[uid] || {};
+            
+            // Calculate total allocated budget (sum of all allocations)
             const totalAllocated = Object.values(userAllocations).reduce((sum, allocation) => {
-                if (allocation.type === 'reversal') {
-                    return sum - allocation.amount;
-                }
                 return sum + allocation.amount;
             }, 0);
 
-            // Calculate actual used budget by considering returns
-            const actualUsedBudget = (user.usedBudget || 0) - (user.returnedBudget || 0);
+            // Get the actual spent amount (usedBudget)
+            const actualSpentBudget = user.usedBudget || 0;
             
-            // Calculate usage percentage based on actual used budget
-            const usagePercent = ((actualUsedBudget) / (totalAllocated || 1)) * 100;
+            // Calculate usage percentage based on actual spent budget
+            const usagePercent = ((actualSpentBudget) / (totalAllocated || 1)) * 100;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
                         <p class="font-medium text-gray-800">${user.email}</p>
-                        <p class="text-sm text-gray-600">Total Budget: ${formatCurrency(totalAllocated)}</p>
-                        <p class="text-sm text-gray-600">Used: ${formatCurrency(actualUsedBudget)}</p>
+                        <p class="text-sm text-gray-600">Total Allocated: ${formatCurrency(totalAllocated)}</p>
+                        <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
                         <p class="text-sm text-gray-600">Returns: ${formatCurrency(user.returnedBudget || 0)}</p>
                     </div>
                     <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
