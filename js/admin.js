@@ -203,17 +203,31 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const statusHTML = subAdminArray.map(([uid, user]) => {
-            const userAllocations = allocations[uid] || {};
-            
-            // Calculate total allocated considering all types of transactions
-            let totalAllocated = user.allocatedBudget || 0; // Use the current allocatedBudget directly
+            // Get fresh data from the user object
+            const totalAllocated = user.allocatedBudget || 0;
             const returnedBudget = user.returnedBudget || 0;
             const usedBudget = user.usedBudget || 0;
+            const availableBalance = user.availableBalance || 0;
             
-            // Calculate usage percentage based on actual used budget against total allocated
+            // Calculate usage percentage
             const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
             const usagePercent = (usedBudget / effectiveAllocated) * 100;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
+            
+            // Get recent transactions
+            const userAllocations = allocations[uid] || {};
+            const recentTransactions = Object.entries(userAllocations)
+                .sort(([, a], [, b]) => b.timestamp - a.timestamp)
+                .slice(0, 3)
+                .map(([, transaction]) => {
+                    const type = transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1);
+                    return `
+                        <div class="text-xs text-gray-500">
+                            ${type}: ${formatCurrency(transaction.amount)} 
+                            (${new Date(transaction.timestamp).toLocaleDateString()})
+                        </div>
+                    `;
+                }).join('');
             
             return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
@@ -222,9 +236,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         <p class="text-sm text-gray-600">Total Allocated: ${formatCurrency(totalAllocated)}</p>
                         <p class="text-sm text-gray-600">Used: ${formatCurrency(usedBudget)}</p>
                         <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedBudget)}</p>
-                        <p class="text-sm text-gray-600">Available: ${formatCurrency(totalAllocated - usedBudget)}</p>
+                        <p class="text-sm text-gray-600">Available: ${formatCurrency(availableBalance)}</p>
+                        <div class="mt-2 border-t pt-1">
+                            ${recentTransactions}
+                        </div>
                     </div>
-                    <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
+                    <div class="text-right">
+                        <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
+                        <p class="text-xs text-gray-500">Usage</p>
+                    </div>
                 </div>
             `;
         }).join('');
@@ -1253,6 +1273,9 @@ document.addEventListener('DOMContentLoaded', function() {
             await database.ref().transaction((data) => {
                 if (data === null) return data;
 
+                const currentAllocated = data.users[subAdminUid].allocatedBudget || 0;
+                const isFullReversal = amount >= currentAllocated;
+
                 // Add reversal record
                 if (!data.budget_allocations) {
                     data.budget_allocations = {};
@@ -1264,12 +1287,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 data.budget_allocations[subAdminUid][reversalId] = reversalRecord;
 
                 // Update user's budget tracking
-                // Set allocatedBudget to 0 if reversing full amount, otherwise subtract the reversed amount
-                const currentAllocated = data.users[subAdminUid].allocatedBudget || 0;
-                if (amount >= currentAllocated) {
+                if (isFullReversal) {
+                    // If reversing full amount, reset all budget values
                     data.users[subAdminUid].allocatedBudget = 0;
                     data.users[subAdminUid].availableBalance = 0;
+                    // Reset any other budget-related fields
+                    data.users[subAdminUid].returnedBudget = 0;
                 } else {
+                    // Partial reversal
                     data.users[subAdminUid].allocatedBudget = currentAllocated - parseFloat(amount);
                     data.users[subAdminUid].availableBalance = (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount);
                 }
@@ -1277,6 +1302,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 return data;
             });
 
+            // Force refresh the user data
+            await database.ref(`users/${subAdminUid}`).once('value');
+            
+            // Reload dashboard with fresh data
             await loadDashboardData();
             showMessage('Budget reversed successfully');
         } catch (error) {
