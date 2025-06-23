@@ -198,20 +198,19 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Get total allocated and used budget
-        const totalAllocated = userData.allocatedBudget || 0;
+        // Get available balance and used budget
+        const availableBalance = userData.availableBalance || 0;
         const usedBudget = userData.usedBudget || 0;
-        const availableBalance = userData.availableBalance || totalAllocated;
         
         // Calculate remaining balance after purchases (not including returns)
         const remainingAfterPurchases = availableBalance - usedBudget;
         const potentialRemaining = remainingAfterPurchases - cartTotal;
         
-        // Calculate usage percentage based on actual spending against total allocated
-        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
+        // Calculate usage percentage based on actual spending against available balance
+        const usagePercent = availableBalance > 0 ? (usedBudget / availableBalance) * 100 : 0;
 
         // Update UI elements
-        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        allocatedAmount.textContent = formatCurrency(availableBalance);
         remainingAmount.textContent = formatCurrency(potentialRemaining);
         spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
