@@ -723,92 +723,58 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Purchase History functionality
-    function loadPurchaseHistory() {
-        const historyList = document.getElementById('historyList');
-        const historyFilter = document.getElementById('historyFilter');
+    async function loadPurchaseHistory() {
+        try {
+            if (!subAdminAuth.currentUser) return;
 
-        // Show loading state
-        historyList.innerHTML = `
-            <div class="animate-pulse">
-                <div class="h-20 bg-gray-100 rounded-lg mb-4"></div>
-                <div class="h-20 bg-gray-100 rounded-lg mb-4"></div>
-                <div class="h-20 bg-gray-100 rounded-lg"></div>
-            </div>
-        `;
+            // Load only the current subadmin's purchases
+            const purchasesRef = database.ref(`purchases/${subAdminAuth.currentUser.uid}`);
+            const purchasesSnapshot = await purchasesRef.once('value');
+            const purchases = purchasesSnapshot.val() || {};
 
-        // Get user ID from auth
-        const userId = firebase.auth().currentUser?.uid;
-        if (!userId) return;
+            const purchaseHistoryContainer = document.getElementById('purchaseHistory');
+            if (!purchaseHistoryContainer) return;
 
-        // Get filter value
-        const filterValue = historyFilter.value;
-        let startDate = new Date();
+            if (Object.keys(purchases).length === 0) {
+                purchaseHistoryContainer.innerHTML = '<p class="text-gray-500 text-center py-4">No purchase history available</p>';
+                return;
+            }
 
-        // Calculate filter date range
-        switch (filterValue) {
-            case 'today':
-                startDate.setHours(0, 0, 0, 0);
-                break;
-            case 'week':
-                startDate.setDate(startDate.getDate() - 7);
-                break;
-            case 'month':
-                startDate.setMonth(startDate.getMonth() - 1);
-                break;
-            default:
-                startDate = null;
-        }
+            const purchaseItems = Object.entries(purchases)
+                .filter(([key, purchase]) => key !== 'initialized') // Skip the initialization flag
+                .map(([id, purchase]) => ({
+                    id,
+                    ...purchase,
+                    timestamp: purchase.timestamp || 0
+                }))
+                .sort((a, b) => b.timestamp - a.timestamp);
 
-        // Query purchases from Firebase
-        let query = firebase.database().ref('purchases').orderByChild('userId').equalTo(userId);
-        if (startDate) {
-            query = query.startAt(startDate.getTime());
-        }
-
-        query.once('value')
-            .then((snapshot) => {
-                const purchases = [];
-                snapshot.forEach((child) => {
-                    purchases.unshift({ id: child.key, ...child.val() });
-                });
-
-                if (purchases.length === 0) {
-                    historyList.innerHTML = `
-                        <div class="text-center py-8 text-gray-500">
-                            No purchases found
-                        </div>
-                    `;
-                    return;
-                }
-
-                historyList.innerHTML = purchases.map(purchase => `
-                    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <div class="font-medium text-gray-900">Purchase #${purchase.id.slice(-6)}</div>
-                                <div class="text-sm text-gray-500">${new Date(purchase.timestamp).toLocaleString()}</div>
-                            </div>
-                            <div class="text-lg font-semibold text-blue-600">$${purchase.total.toFixed(2)}</div>
-                        </div>
+            const historyHTML = purchaseItems.map(purchase => `
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg mb-2">
+                    <div class="flex-1">
+                        <p class="font-medium text-gray-800">Purchase #${purchase.id.slice(-6)}</p>
+                        <p class="text-sm text-gray-600">${formatDate(purchase.timestamp)}</p>
                         <div class="text-sm text-gray-600">
                             ${purchase.items.map(item => `
-                                <div class="flex justify-between items-center">
+                                <div class="flex justify-between items-center text-sm">
                                     <span>${item.name} × ${item.quantity}</span>
-                                    <span>$${(item.price * item.quantity).toFixed(2)}</span>
+                                    <span>${formatCurrency(item.price * item.quantity)}</span>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
-                `).join('');
-            })
-            .catch((error) => {
-                console.error('Error loading purchase history:', error);
-                historyList.innerHTML = `
-                    <div class="text-center py-8 text-red-500">
-                        Error loading purchase history
+                    <div class="text-right">
+                        <p class="font-semibold text-blue-600">${formatCurrency(purchase.totalAmount)}</p>
                     </div>
-                `;
-            });
+                </div>
+            `).join('');
+
+            purchaseHistoryContainer.innerHTML = historyHTML;
+
+        } catch (error) {
+            console.error('Error loading purchase history:', error);
+            showMessage('Error loading purchase history', 'error');
+        }
     }
 
     // Handle history filter changes
