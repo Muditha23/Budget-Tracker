@@ -198,11 +198,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Get budget values directly from userData
-        const totalAllocated = userData.allocatedBudget || 0;
-        const usedBudget = userData.usedBudget || 0;
-        const returnedBudget = userData.returnedBudget || 0;
-        const availableBalance = userData.availableBalance || 0;
+        // Ensure all budget values are numbers
+        const totalAllocated = Number(userData.allocatedBudget) || 0;
+        const usedBudget = Number(userData.usedBudget) || 0;
+        const returnedBudget = Number(userData.returnedBudget) || 0;
+        const availableBalance = Number(userData.availableBalance) || 0;
         
         // Calculate remaining balance
         const remainingBalance = availableBalance - cartTotal;
@@ -211,52 +211,50 @@ document.addEventListener('DOMContentLoaded', function() {
         const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
         const usagePercent = (usedBudget / effectiveAllocated) * 100;
 
-        // Update UI elements with proper currency formatting
-        allocatedAmount.textContent = formatCurrency(totalAllocated);
-        remainingAmount.textContent = formatCurrency(remainingBalance);
-        spentAmount.textContent = formatCurrency(usedBudget);
-        usagePercentage.textContent = Math.round(usagePercent) + '%';
-
-        // Update usage bar color based on percentage
-        usageBar.style.width = Math.min(usagePercent, 100) + '%';
-        
-        if (usagePercent >= 90) {
-            usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-red-600';
-        } else if (usagePercent >= 80) {
-            usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-yellow-600';
-        } else {
-            usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-green-600';
-        }
-
-        // Force update of the budget overview section
+        // Force update all budget display elements
         const budgetOverview = document.getElementById('budgetOverview');
         if (budgetOverview) {
             budgetOverview.innerHTML = `
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div class="text-center p-4 bg-blue-50 rounded-lg">
                         <p class="text-sm text-gray-600">Total Allocated</p>
-                        <p class="text-xl font-bold text-blue-600">${formatCurrency(totalAllocated)}</p>
+                        <p id="allocatedAmount" class="text-xl font-bold text-blue-600">${formatCurrency(totalAllocated)}</p>
                     </div>
                     <div class="text-center p-4 bg-orange-50 rounded-lg">
                         <p class="text-sm text-gray-600">Spent on Purchases</p>
-                        <p class="text-xl font-bold text-orange-600">${formatCurrency(usedBudget)}</p>
+                        <p id="spentAmount" class="text-xl font-bold text-orange-600">${formatCurrency(usedBudget)}</p>
                     </div>
                     <div class="text-center p-4 bg-green-50 rounded-lg">
                         <p class="text-sm text-gray-600">Available for Spending</p>
-                        <p class="text-xl font-bold text-green-600">${formatCurrency(availableBalance)}</p>
+                        <p id="remainingAmount" class="text-xl font-bold text-green-600">${formatCurrency(availableBalance)}</p>
                     </div>
                 </div>
                 <div class="mt-4">
                     <p class="text-sm text-gray-600 mb-2">Purchase Usage</p>
                     <div class="bg-gray-200 h-2 rounded-full">
-                        <div class="h-2 rounded-full transition-all duration-300 ${usageBar.className}" style="width: ${usagePercent}%"></div>
+                        <div id="usageBar" class="h-2 rounded-full transition-all duration-300 ${
+                            usagePercent >= 90 ? 'bg-red-500' :
+                            usagePercent >= 80 ? 'bg-yellow-500' :
+                            'bg-green-500'
+                        }" style="width: ${usagePercent}%"></div>
                     </div>
-                    <p class="text-right text-sm text-gray-600 mt-1">${Math.round(usagePercent)}%</p>
+                    <p id="usagePercentage" class="text-right text-sm text-gray-600 mt-1">${Math.round(usagePercent)}%</p>
                 </div>
             `;
+        } else {
+            // Update individual elements if they exist
+            if (allocatedAmount) allocatedAmount.textContent = formatCurrency(totalAllocated);
+            if (remainingAmount) remainingAmount.textContent = formatCurrency(remainingBalance);
+            if (spentAmount) spentAmount.textContent = formatCurrency(usedBudget);
+            if (usagePercentage) usagePercentage.textContent = Math.round(usagePercent) + '%';
+            if (usageBar) {
+                usageBar.style.width = Math.min(usagePercent, 100) + '%';
+                usageBar.className = `h-2 rounded-full transition-all duration-300 ${
+                    usagePercent >= 90 ? 'bg-red-500' :
+                    usagePercent >= 80 ? 'bg-yellow-500' :
+                    'bg-green-500'
+                }`;
+            }
         }
     }
 
@@ -478,19 +476,16 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const uid = firebase.auth().currentUser.uid;
             
-            // Get initial user data
-            const userSnapshot = await database.ref(`users/${uid}`).once('value');
-            userData = userSnapshot.val();
-
-            if (!userData) {
-                showMessage('Error: User data not found', 'error');
-                return;
-            }
-
             // Set up real-time listener for user data changes
             database.ref(`users/${uid}`).on('value', (snapshot) => {
                 userData = snapshot.val();
                 if (userData) {
+                    // Ensure budget values are numbers or default to 0
+                    userData.allocatedBudget = Number(userData.allocatedBudget) || 0;
+                    userData.availableBalance = Number(userData.availableBalance) || 0;
+                    userData.usedBudget = Number(userData.usedBudget) || 0;
+                    userData.returnedBudget = Number(userData.returnedBudget) || 0;
+                    
                     updateBudgetDisplay();
                 }
             });
@@ -503,22 +498,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 const latestUserData = (await database.ref(`users/${uid}`).once('value')).val();
                 
                 if (latestUserData) {
-                    // Use the allocatedBudget directly from user data
-                    const totalAllocated = latestUserData.allocatedBudget || 0;
-                    const availableBalance = latestUserData.availableBalance || 0;
-
                     // Update user data in memory
                     userData = {
                         ...latestUserData,
-                        allocatedBudget: totalAllocated,
-                        availableBalance: availableBalance
+                        // Ensure budget values are numbers
+                        allocatedBudget: Number(latestUserData.allocatedBudget) || 0,
+                        availableBalance: Number(latestUserData.availableBalance) || 0,
+                        usedBudget: Number(latestUserData.usedBudget) || 0,
+                        returnedBudget: Number(latestUserData.returnedBudget) || 0
                     };
 
-                    // Update budget display
-                    updateBudgetDisplay();
-                    
                     // Generate and display budget history
                     generateBudgetHistory(allocations);
+                    
+                    // Force update the display
+                    updateBudgetDisplay();
                 }
             });
 
