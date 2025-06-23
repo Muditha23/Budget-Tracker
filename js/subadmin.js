@@ -199,22 +199,22 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!userData) return;
 
         // Get total allocated and used budget
-        const totalAllocated = userData.allocatedBudget || 0;  // This is already the current allocation after returns
+        const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
         const remaining = totalAllocated - usedBudget;
         const potentialUsed = usedBudget + cartTotal;
         const potentialRemaining = totalAllocated - potentialUsed;
         
-        // Calculate usage percentage based on actual spending against current allocation
+        // Calculate usage percentage based on actual spending against total allocated
         const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
 
-        // Update UI elements with current values
-        allocatedAmount.textContent = formatCurrency(totalAllocated);  // Shows current allocation after returns
-        spentAmount.textContent = formatCurrency(usedBudget);
+        // Update UI elements
+        allocatedAmount.textContent = formatCurrency(totalAllocated);
         remainingAmount.textContent = formatCurrency(potentialRemaining);
+        spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
 
-        // Update usage bar color based on percentage of current allocation
+        // Update usage bar color based on percentage
         usageBar.style.width = Math.min(usagePercent, 100) + '%';
         
         if (usagePercent >= 90) {
