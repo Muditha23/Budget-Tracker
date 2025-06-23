@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sub Admin Dashboard - Budget Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="flex">
+        <!-- Sidebar -->
+        <div class="bg-gray-800 text-white w-64 min-h-screen p-4">
+            <div class="mb-8">
+                <h1 class="text-xl font-bold">Sub Admin Dashboard</h1>
+                <p class="text-gray-400 text-sm">Budget Tracker</p>
+            </div>
+            
+            <nav class="space-y-2">
+                <button class="nav-item w-full text-left px-4 py-3 rounded-lg bg-blue-600 text-white" data-section="budget">
+                    📊 Budget Overview
+                </button>
+                <button class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors" data-section="purchases">
+                    🛒 Make Purchase
+                </button>
+                <button class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors" data-section="history">
+                    📜 Purchase History
+                </button>
+                <button class="nav-item w-full text-left px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors" data-section="return">
+                    💰 Return Balance
+                </button>
+                <button id="logoutBtn" class="w-full text-left px-4 py-3 rounded-lg hover:bg-red-600 transition-colors text-red-400">
+                    🚪 Logout
+                </button>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 p-6">
+            <!-- Budget Overview Section -->
+            <div id="budget" class="section">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">Budget Overview</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Allocated</h3>
+                        <p id="allocatedAmount" class="text-3xl font-bold text-blue-600">$0.00</p>
+                        <p class="text-sm text-gray-500 mt-1">Budget given by admin</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Spent</h3>
+                        <p id="totalSpentAmount" class="text-3xl font-bold text-purple-600">$0.00</p>
+                        <p class="text-sm text-gray-500 mt-1">Money used for purchases</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Remaining Balance</h3>
+                        <p id="remainingAmount" class="text-3xl font-bold text-green-600">$0.00</p>
+                        <p class="text-sm text-gray-500 mt-1">Available for spending</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Usage</h3>
+                        <p id="usagePercentage" class="text-3xl font-bold text-orange-600">0%</p>
+                        <div class="mt-2 bg-gray-200 rounded-full h-2">
+                            <div id="usageBar" class="bg-green-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <p class="text-sm text-gray-500 mt-1">Percentage of allocated budget spent</p>
+                    </div>
+                </div>
+
+                <!-- Purchase History Overview -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-4">Recent Purchases</h3>
+                        <div id="recentPurchases" class="space-y-3">
+                            <p class="text-gray-500">No recent purchases</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold text-gray-700 mb-4">Budget Returns</h3>
+                        <div id="returnHistoryList" class="space-y-3">
+                            <p class="text-gray-500">No return history</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Make Purchase Section -->
+            <div id="purchases" class="section hidden">
+                <!-- Existing purchase form content -->
+            </div>
+
+            <!-- Purchase History Section -->
+            <div id="history" class="section hidden">
+                <!-- Existing history content -->
+            </div>
+
+            <!-- Return Balance Section -->
+            <div id="return" class="section hidden">
+                <!-- Existing return form content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="successMessage" class="fixed top-4 right-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg hidden z-50"></div>
+    <div id="errorMessage" class="fixed top-4 right-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg hidden z-50"></div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/auth-manager.js"></script>
+    <script src="js/subadmin.js"></script>
+</body>
+</html> 
