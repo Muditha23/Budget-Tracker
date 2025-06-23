@@ -1,0 +1,38 @@
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "used": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'sub_admin')"
+        },
+        "lastPurchase": {
+          ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'sub_admin')"
+        }
+      }
+    },
+    "funds": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "allocations": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "purchases": {
+      ".read": "auth != null",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'sub_admin')"
+    },
+    "logs": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null"
+    },
+    "suggestions": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+} 
