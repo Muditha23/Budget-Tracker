@@ -123,16 +123,14 @@ class SubAdminAuth {
                     
                     // Check if user is a sub-admin
                     if (this.userData && this.userData.role === 'subadmin') {
-                        // Make userData available globally
-                        window.userData = this.userData;
-                        
-                        // Initialize interface if the function exists
+                        // Initialize interface
                         if (typeof window.initializeSubAdminInterface === 'function') {
-                            await window.initializeSubAdminInterface(this.userData);
+                            window.initializeSubAdminInterface(this.userData);
                         }
                     } else {
                         console.error('User is not a sub-admin');
-                        await this.logout();
+                        this.logout();
+                        window.location.href = 'login.html';
                     }
                 } catch (error) {
                     console.error('Error initializing sub-admin:', error);

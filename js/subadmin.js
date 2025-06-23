@@ -1,18 +1,5 @@
 // Sub Admin Interface Implementation
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Firebase Auth
-    const auth = firebase.auth();
-    
-    // Get current authenticated user
-    async function getCurrentUser() {
-        return new Promise((resolve, reject) => {
-            const unsubscribe = auth.onAuthStateChanged(user => {
-                unsubscribe();
-                resolve(user);
-            }, reject);
-        });
-    }
-
     // Initialize authentication
     const subAdminAuth = new SubAdminAuth();
     
@@ -41,7 +28,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const usageBar = document.getElementById('usageBar');
     const spentAmount = document.getElementById('spentAmount');
 
-    // State
+    // Cart state
     let cart = [];
     let predefinedItems = {};
     let userData = null;
@@ -209,12 +196,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateBudgetDisplay(cartTotal = 0) {
-        if (!window.userData) return;
+        if (!userData) return;
 
         // Get total allocated and used budget
-        const totalAllocated = window.userData.allocatedBudget || 0;
-        const usedBudget = window.userData.usedBudget || 0;
-        const availableBalance = window.userData.availableBalance || totalAllocated;
+        const totalAllocated = userData.allocatedBudget || 0;
+        const usedBudget = userData.usedBudget || 0;
+        const availableBalance = userData.availableBalance || totalAllocated;
         
         // Calculate remaining balance after purchases (not including returns)
         const remainingAfterPurchases = availableBalance - usedBudget;
@@ -224,25 +211,23 @@ document.addEventListener('DOMContentLoaded', function() {
         const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
 
         // Update UI elements
-        if (allocatedAmount) allocatedAmount.textContent = formatCurrency(totalAllocated);
-        if (remainingAmount) remainingAmount.textContent = formatCurrency(potentialRemaining);
-        if (spentAmount) spentAmount.textContent = formatCurrency(usedBudget);
-        if (usagePercentage) usagePercentage.textContent = Math.round(usagePercent) + '%';
+        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        remainingAmount.textContent = formatCurrency(potentialRemaining);
+        spentAmount.textContent = formatCurrency(usedBudget);
+        usagePercentage.textContent = Math.round(usagePercent) + '%';
 
         // Update usage bar color based on percentage
-        if (usageBar) {
-            usageBar.style.width = Math.min(usagePercent, 100) + '%';
-            
-            if (usagePercent >= 90) {
-                usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
-                remainingAmount.className = 'text-xl font-bold text-red-600';
-            } else if (usagePercent >= 80) {
-                usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
-                remainingAmount.className = 'text-xl font-bold text-yellow-600';
-            } else {
-                usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
-                remainingAmount.className = 'text-xl font-bold text-green-600';
-            }
+        usageBar.style.width = Math.min(usagePercent, 100) + '%';
+        
+        if (usagePercent >= 90) {
+            usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-red-600';
+        } else if (usagePercent >= 80) {
+            usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-yellow-600';
+        } else {
+            usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-green-600';
         }
     }
 
@@ -313,22 +298,10 @@ document.addEventListener('DOMContentLoaded', function() {
     window.removeFromCart = removeFromCart;
 
     // Initialize interface when user data is available
-    window.initializeSubAdminInterface = async function(userDataParam) {
-        try {
-            // Store the user data first
-            window.userData = userDataParam;
-            
-            // Initialize all components
-            await initializeBudgetInfo();
-            await loadPurchaseHistory();
-            setupItemsListener();
-            
-            // Update initial displays
-            updateBudgetDisplay();
-        } catch (error) {
-            console.error('Error during initialization:', error);
-            showMessage('Error initializing page', 'error');
-        }
+    window.initializeSubAdminInterface = function(userDataParam) {
+        userData = userDataParam;
+        updateBudgetDisplay();
+        setupItemsListener();
     };
 
     // Setup real-time listener for items
@@ -475,30 +448,40 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize budget info
     async function initializeBudgetInfo() {
         try {
-            if (!subAdminAuth.currentUser || !window.userData) return;
+            const user = await getCurrentUser();
+            if (!user) return;
+            
+            // Get user data including budget info
+            const userRef = database.ref(`users/${user.uid}`);
+            const userSnapshot = await userRef.once('value');
+            userData = userSnapshot.val();
+
+            if (!userData) {
+                showMessage('Error loading user data', 'error');
+                return;
+            }
 
             // Set up real-time listener for budget updates
-            const userRef = database.ref(`users/${subAdminAuth.currentUser.uid}`);
             userRef.on('value', (snapshot) => {
-                window.userData = snapshot.val();
+                userData = snapshot.val();
                 updateBudgetDisplay();
                 
                 // Load budget history
-                const allocationsRef = database.ref(`budget_allocations/${subAdminAuth.currentUser.uid}`);
+                const allocationsRef = database.ref(`budget_allocations/${user.uid}`);
                 allocationsRef.once('value').then(snapshot => {
                     const allocations = snapshot.val() || {};
                     generateBudgetHistory(allocations);
                 });
-            });
+                });
 
             // Initial budget display update
-            updateBudgetDisplay();
-            
+                updateBudgetDisplay();
+                
             // Load budget history
-            const allocationsRef = database.ref(`budget_allocations/${subAdminAuth.currentUser.uid}`);
+            const allocationsRef = database.ref(`budget_allocations/${user.uid}`);
             const allocationsSnapshot = await allocationsRef.once('value');
             const allocations = allocationsSnapshot.val() || {};
-            generateBudgetHistory(allocations);
+                generateBudgetHistory(allocations);
 
         } catch (error) {
             console.error('Error initializing budget info:', error);
@@ -527,27 +510,38 @@ document.addEventListener('DOMContentLoaded', function() {
             let amountClass = 'text-green-600';
             let amountPrefix = '+';
             let actionText = 'Allocated';
-            let adminInfo = item.adminEmail ? ` by ${item.adminEmail}` : '';
+            
+            if (item.type === 'reversal') {
+                amountClass = 'text-red-600';
+                amountPrefix = '-';
+                actionText = 'Reversed';
+            } else if (item.type === 'return') {
+                amountClass = 'text-orange-600';
+                amountPrefix = '-';
+                actionText = 'Returned';
+            }
 
-            return `
+        return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg mb-2">
                     <div class="flex-1">
-                        <p class="font-medium text-gray-800">${actionText}${adminInfo}</p>
+                        <p class="font-medium text-gray-800">${actionText} by ${item.adminEmail}</p>
                         <p class="text-sm text-gray-600">${formatDate(item.timestamp)}</p>
-                    </div>
+                        <p class="text-sm text-gray-600">${item.description || ''}</p>
+                            </div>
                     <div class="text-right">
                         <p class="font-semibold ${amountClass}">${amountPrefix}${formatCurrency(item.amount)}</p>
-                    </div>
                 </div>
-            `;
+            </div>
+        `;
         }).join('');
 
         historyContainer.innerHTML = historyHTML;
     }
 
-    async function returnBudget(amount, notes = '') {
+    async function returnBudget(amount, description = '') {
         try {
-            if (!subAdminAuth.currentUser) throw new Error('User not authenticated');
+            const user = await getCurrentUser();
+            if (!user) throw new Error('User not authenticated');
 
             // Check if amount is valid
             if (!amount || amount <= 0) {
@@ -560,45 +554,30 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Create return request
-            const returnRef = database.ref(`balance_returns/${subAdminAuth.currentUser.uid}`).push();
+            const returnRef = database.ref(`budget_returns/${user.uid}`).push();
             await returnRef.set({
                 amount: amount,
                 timestamp: Date.now(),
-                status: 'completed',
-                notes: notes || ''
+                status: 'pending',
+                description: description || 'Budget return request',
+                userEmail: user.email
             });
 
-            // Update user's available balance
-            const userRef = database.ref(`users/${subAdminAuth.currentUser.uid}`);
-            await userRef.update({
-                availableBalance: userData.availableBalance - amount,
-                returnedBudget: (userData.returnedBudget || 0) + amount
-            });
-
-            showMessage('Return processed successfully');
+            showMessage('Return request submitted successfully');
             
             // Refresh budget display
             await initializeBudgetInfo();
         } catch (error) {
-            console.error('Error processing return:', error);
+            console.error('Error submitting return request:', error);
             showMessage(error.message, 'error');
         }
     }
 
-    // Initialize the page
-    auth.onAuthStateChanged(async (user) => {
+    // Call initializeBudgetInfo after authentication
+    firebase.auth().onAuthStateChanged(function(user) {
         if (user) {
-            try {
-                await initializeBudgetInfo();
-                await loadPurchaseHistory();
-                setupItemsListener();
-            } catch (error) {
-                console.error('Error during initialization:', error);
-                showMessage('Error initializing page', 'error');
-            }
-        } else {
-            // Redirect to login page if not authenticated
-            window.location.href = '/login.html';
+            initializeBudgetInfo();
+            setupItemsListener();
         }
     });
 
@@ -722,58 +701,92 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Purchase History functionality
-    async function loadPurchaseHistory() {
-        try {
-            if (!subAdminAuth.currentUser) return;
+    function loadPurchaseHistory() {
+        const historyList = document.getElementById('historyList');
+        const historyFilter = document.getElementById('historyFilter');
 
-            // Load only the current subadmin's purchases
-            const purchasesRef = database.ref(`purchases/${subAdminAuth.currentUser.uid}`);
-            const purchasesSnapshot = await purchasesRef.once('value');
-            const purchases = purchasesSnapshot.val() || {};
+        // Show loading state
+        historyList.innerHTML = `
+            <div class="animate-pulse">
+                <div class="h-20 bg-gray-100 rounded-lg mb-4"></div>
+                <div class="h-20 bg-gray-100 rounded-lg mb-4"></div>
+                <div class="h-20 bg-gray-100 rounded-lg"></div>
+            </div>
+        `;
 
-            const purchaseHistoryContainer = document.getElementById('purchaseHistory');
-            if (!purchaseHistoryContainer) return;
+        // Get user ID from auth
+        const userId = firebase.auth().currentUser?.uid;
+        if (!userId) return;
 
-            if (Object.keys(purchases).length === 0) {
-                purchaseHistoryContainer.innerHTML = '<p class="text-gray-500 text-center py-4">No purchase history available</p>';
-                return;
-            }
+        // Get filter value
+        const filterValue = historyFilter.value;
+        let startDate = new Date();
 
-            const purchaseItems = Object.entries(purchases)
-                .filter(([key, purchase]) => key !== 'initialized') // Skip the initialization flag
-                .map(([id, purchase]) => ({
-                    id,
-                    ...purchase,
-                    timestamp: purchase.timestamp || 0
-                }))
-                .sort((a, b) => b.timestamp - a.timestamp);
+        // Calculate filter date range
+        switch (filterValue) {
+            case 'today':
+                startDate.setHours(0, 0, 0, 0);
+                break;
+            case 'week':
+                startDate.setDate(startDate.getDate() - 7);
+                break;
+            case 'month':
+                startDate.setMonth(startDate.getMonth() - 1);
+                break;
+            default:
+                startDate = null;
+        }
 
-            const historyHTML = purchaseItems.map(purchase => `
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg mb-2">
-                    <div class="flex-1">
-                        <p class="font-medium text-gray-800">Purchase #${purchase.id.slice(-6)}</p>
-                        <p class="text-sm text-gray-600">${formatDate(purchase.timestamp)}</p>
+        // Query purchases from Firebase
+        let query = firebase.database().ref('purchases').orderByChild('userId').equalTo(userId);
+        if (startDate) {
+            query = query.startAt(startDate.getTime());
+        }
+
+        query.once('value')
+            .then((snapshot) => {
+                const purchases = [];
+                snapshot.forEach((child) => {
+                    purchases.unshift({ id: child.key, ...child.val() });
+                });
+
+                if (purchases.length === 0) {
+                    historyList.innerHTML = `
+                        <div class="text-center py-8 text-gray-500">
+                            No purchases found
+                        </div>
+                    `;
+                    return;
+                }
+
+                historyList.innerHTML = purchases.map(purchase => `
+                    <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <div class="font-medium text-gray-900">Purchase #${purchase.id.slice(-6)}</div>
+                                <div class="text-sm text-gray-500">${new Date(purchase.timestamp).toLocaleString()}</div>
+                            </div>
+                            <div class="text-lg font-semibold text-blue-600">$${purchase.total.toFixed(2)}</div>
+                        </div>
                         <div class="text-sm text-gray-600">
                             ${purchase.items.map(item => `
-                                <div class="flex justify-between items-center text-sm">
+                                <div class="flex justify-between items-center">
                                     <span>${item.name} × ${item.quantity}</span>
-                                    <span>${formatCurrency(item.price * item.quantity)}</span>
+                                    <span>$${(item.price * item.quantity).toFixed(2)}</span>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
-                    <div class="text-right">
-                        <p class="font-semibold text-blue-600">${formatCurrency(purchase.totalAmount)}</p>
+                `).join('');
+            })
+            .catch((error) => {
+                console.error('Error loading purchase history:', error);
+                historyList.innerHTML = `
+                    <div class="text-center py-8 text-red-500">
+                        Error loading purchase history
                     </div>
-                </div>
-            `).join('');
-
-            purchaseHistoryContainer.innerHTML = historyHTML;
-
-        } catch (error) {
-            console.error('Error loading purchase history:', error);
-            showMessage('Error loading purchase history', 'error');
-        }
+                `;
+            });
     }
 
     // Handle history filter changes
@@ -886,41 +899,62 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Create a reversal allocation
             const allocationRef = database.ref(`budget_allocations/${uid}`).push();
-            await allocationRef.set({
-                amount: -amount,
+            const allocationData = {
+                amount: amount,
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 type: 'reversal',
-                adminId: adminId
+                notes: `Balance returned${returnNotes.value.trim() ? ': ' + returnNotes.value.trim() : ''}`
+            };
+
+            // Update user's data - keep original allocated budget but update available balance
+            const updatedAvailableBalance = (userData.availableBalance || 0) - amount;
+
+            // Perform updates atomically
+            await database.ref().update({
+                [`balance_returns/${uid}/${returnRef.key}`]: returnData,
+                [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData,
+                [`users/${uid}/availableBalance`]: updatedAvailableBalance
             });
 
-            // Update user's available balance
-            await userRef.update({
-                availableBalance: userData.availableBalance - amount,
-                returnedBudget: (userData.returnedBudget || 0) + amount
-            });
+            // Reset form
+            returnAmount.value = '';
+            returnNotes.value = '';
+            showMessage('Balance successfully returned', 'success');
 
-            showMessage('Return processed successfully');
-            
-            // Refresh budget display
-            await initializeBudgetInfo();
         } catch (error) {
-            console.error('Error processing return:', error);
-            showMessage(error.message, 'error');
+            console.error('Error returning balance:', error);
+            showMessage('Error returning balance', 'error');
         }
     });
 
-    // Initialize the page when authentication is ready
-    if (typeof window.initializeSubAdminInterface === 'undefined') {
-        window.initializeSubAdminInterface = async function(userData) {
-            try {
-                // Initialize all components
-                await initializeBudgetInfo();
-                await loadPurchaseHistory();
-                setupItemsListener();
-            } catch (error) {
-                console.error('Error during initialization:', error);
-                showMessage('Error initializing page', 'error');
-            }
-        };
+    // Update return history display
+    function updateReturnHistory(returns) {
+        if (!returns || Object.keys(returns).length === 0) {
+            returnHistoryList.innerHTML = '<p class="text-gray-500 text-center py-4">No return history</p>';
+            return;
+        }
+
+        const historyArray = Object.entries(returns)
+            .map(([id, ret]) => ({...ret, id}))
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+        returnHistoryList.innerHTML = historyArray.map(ret => `
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <div class="font-medium text-gray-900">Return #${ret.id.slice(-6)}</div>
+                        <div class="text-sm text-gray-500">${new Date(ret.timestamp).toLocaleString()}</div>
+                    </div>
+                    <div class="text-lg font-semibold text-purple-600">${formatCurrency(ret.amount)}</div>
+                </div>
+                ${ret.notes ? `<p class="text-sm text-gray-600 mt-2">${ret.notes}</p>` : ''}
+            </div>
+        `).join('');
     }
+
+    // Initialize return section when showing it
+    document.querySelector('[data-section="return"]').addEventListener('click', () => {
+        initializeReturnSection();
+    });
 });
+
