@@ -846,6 +846,129 @@ document.addEventListener('DOMContentLoaded', function() {
         authManager.logout();
     });
 
+    // Budget Operations
+    async function handleAllocateBudget(subAdminUid, amount, note = '') {
+        try {
+            const result = await authManager.allocateBudgetToSubAdmin(subAdminUid, amount, note);
+            if (result.success) {
+                showMessage(`Successfully allocated ${formatCurrency(amount)} to sub-admin.`, 'success');
+                await loadSubAdmins(); // Refresh the display
+                await loadDashboardData(); // Update overview
+            }
+        } catch (error) {
+            console.error('Error in allocation:', error);
+            showMessage(error.message || 'Error allocating budget.', 'error');
+        }
+    }
+
+    async function handleReverseBudget(subAdminUid, amount, note = '') {
+        try {
+            const result = await authManager.reverseBudgetFromSubAdmin(subAdminUid, amount, note);
+            if (result.success) {
+                showMessage(`Successfully reversed ${formatCurrency(amount)} from sub-admin.`, 'success');
+                await loadSubAdmins(); // Refresh the display
+                await loadDashboardData(); // Update overview
+            }
+        } catch (error) {
+            console.error('Error in reversal:', error);
+            showMessage(error.message || 'Error reversing budget.', 'error');
+        }
+    }
+
+    async function handleReturnBudget(subAdminUid, amount, note = '') {
+        try {
+            const result = await authManager.returnBudgetFromSubAdmin(subAdminUid, amount, note);
+            if (result.success) {
+                showMessage(`Successfully processed return of ${formatCurrency(amount)} from sub-admin.`, 'success');
+                await loadSubAdmins(); // Refresh the display
+                await loadDashboardData(); // Update overview
+            }
+        } catch (error) {
+            console.error('Error in return:', error);
+            showMessage(error.message || 'Error processing budget return.', 'error');
+        }
+    }
+
+    // Attach event listeners to budget operation buttons
+    document.addEventListener('click', async function(e) {
+        if (e.target.classList.contains('allocate-budget-btn')) {
+            const subAdminUid = e.target.dataset.uid;
+            const amount = parseFloat(prompt('Enter amount to allocate:'));
+            if (amount && amount > 0) {
+                const note = prompt('Enter note (optional):') || '';
+                await handleAllocateBudget(subAdminUid, amount, note);
+            }
+        } else if (e.target.classList.contains('reverse-budget-btn')) {
+            const subAdminUid = e.target.dataset.uid;
+            const amount = parseFloat(prompt('Enter amount to reverse:'));
+            if (amount && amount > 0) {
+                const note = prompt('Enter note (optional):') || '';
+                await handleReverseBudget(subAdminUid, amount, note);
+            }
+        } else if (e.target.classList.contains('return-budget-btn')) {
+            const subAdminUid = e.target.dataset.uid;
+            const amount = parseFloat(prompt('Enter amount being returned:'));
+            if (amount && amount > 0) {
+                const note = prompt('Enter note (optional):') || '';
+                await handleReturnBudget(subAdminUid, amount, note);
+            }
+        }
+    });
+
+    // Update the sub-admin list rendering to include budget operation buttons
+    async function renderSubAdminList(subAdmins) {
+        // ...existing code...
+
+        const subAdminsHTML = Object.entries(subAdmins).map(([uid, data]) => `
+            <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
+                <div class="flex justify-between items-start mb-3">
+                    <div>
+                        <h4 class="font-medium text-gray-800">${data.email}</h4>
+                        <p class="text-sm text-gray-600">Allocated: ${formatCurrency(data.allocatedBudget || 0)}</p>
+                        <p class="text-sm text-gray-600">Used: ${formatCurrency(data.usedBudget || 0)}</p>
+                    </div>
+                    <div class="space-x-2">
+                        <button class="allocate-budget-btn bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600" 
+                            data-uid="${uid}">Allocate</button>
+                        <button class="reverse-budget-btn bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600" 
+                            data-uid="${uid}">Reverse</button>
+                        <button class="return-budget-btn bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600" 
+                            data-uid="${uid}">Return</button>
+                    </div>
+                </div>
+                <!-- Budget history section -->
+                <div class="mt-4">
+                    <h5 class="text-sm font-medium text-gray-700 mb-2">Budget History</h5>
+                    <div class="space-y-2 max-h-40 overflow-y-auto">
+                        ${renderBudgetHistory(uid)}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        subAdminsList.innerHTML = subAdminsHTML;
+    }
+
+    // Helper function to render budget history
+    function renderBudgetHistory(uid) {
+        const allocations = dashboardData.allocations[uid] || {};
+        return Object.entries(allocations)
+            .sort((a, b) => b[1].timestamp - a[1].timestamp)
+            .map(([id, allocation]) => `
+                <div class="text-sm flex justify-between items-center ${
+                    allocation.type === 'allocation' ? 'text-green-600' :
+                    allocation.type === 'reversal' ? 'text-red-600' :
+                    'text-yellow-600'
+                }">
+                    <span>${allocation.type.charAt(0).toUpperCase() + allocation.type.slice(1)}: 
+                        ${formatCurrency(Math.abs(allocation.amount))}
+                        ${allocation.note ? `- ${allocation.note}` : ''}
+                    </span>
+                    <span>${formatDate(allocation.timestamp)}</span>
+                </div>
+            `).join('');
+    }
+
     // Global functions for item and sub-admin management
     window.editItem = async function(id, currentName, currentPrice) {
         const newName = prompt('Enter new item name:', currentName);

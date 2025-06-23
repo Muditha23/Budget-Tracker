@@ -96,6 +96,110 @@ class AuthManager {
         }
     }
 
+    async allocateBudgetToSubAdmin(subAdminUid, amount, note = '') {
+        try {
+            const updates = {};
+            
+            // Create allocation record
+            const allocationRef = database.ref(`budget_allocations/${subAdminUid}`).push();
+            const allocationData = {
+                amount: parseFloat(amount),
+                type: 'allocation',
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                adminId: this.currentUser.uid,
+                adminEmail: this.currentUser.email,
+                note: note
+            };
+            
+            // Update sub-admin's allocated budget
+            const userRef = await database.ref(`users/${subAdminUid}`).once('value');
+            const userData = userRef.val();
+            const currentAllocated = userData.allocatedBudget || 0;
+            const newAllocated = currentAllocated + parseFloat(amount);
+            
+            updates[`budget_allocations/${subAdminUid}/${allocationRef.key}`] = allocationData;
+            updates[`users/${subAdminUid}/allocatedBudget`] = newAllocated;
+            
+            await database.ref().update(updates);
+            return { success: true, allocationId: allocationRef.key };
+        } catch (error) {
+            console.error('Error allocating budget:', error);
+            throw error;
+        }
+    }
+
+    async reverseBudgetFromSubAdmin(subAdminUid, amount, note = '') {
+        try {
+            const updates = {};
+            
+            // Create reversal record
+            const reversalRef = database.ref(`budget_allocations/${subAdminUid}`).push();
+            const reversalData = {
+                amount: -parseFloat(amount), // Negative amount for reversal
+                type: 'reversal',
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                adminId: this.currentUser.uid,
+                adminEmail: this.currentUser.email,
+                note: note
+            };
+            
+            // Update sub-admin's allocated budget
+            const userRef = await database.ref(`users/${subAdminUid}`).once('value');
+            const userData = userRef.val();
+            const currentAllocated = userData.allocatedBudget || 0;
+            const newAllocated = currentAllocated - parseFloat(amount);
+            
+            if (newAllocated < 0) {
+                throw new Error('Cannot reverse more than allocated amount');
+            }
+            
+            updates[`budget_allocations/${subAdminUid}/${reversalRef.key}`] = reversalData;
+            updates[`users/${subAdminUid}/allocatedBudget`] = newAllocated;
+            
+            await database.ref().update(updates);
+            return { success: true, reversalId: reversalRef.key };
+        } catch (error) {
+            console.error('Error reversing budget:', error);
+            throw error;
+        }
+    }
+
+    async returnBudgetFromSubAdmin(subAdminUid, amount, note = '') {
+        try {
+            const updates = {};
+            
+            // Create return record
+            const returnRef = database.ref(`budget_allocations/${subAdminUid}`).push();
+            const returnData = {
+                amount: -parseFloat(amount), // Negative amount for return
+                type: 'return',
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                adminId: this.currentUser.uid,
+                adminEmail: this.currentUser.email,
+                note: note
+            };
+            
+            // Update sub-admin's allocated budget
+            const userRef = await database.ref(`users/${subAdminUid}`).once('value');
+            const userData = userRef.val();
+            const currentAllocated = userData.allocatedBudget || 0;
+            const newAllocated = currentAllocated - parseFloat(amount);
+            
+            if (newAllocated < 0) {
+                throw new Error('Cannot return more than allocated amount');
+            }
+            
+            updates[`budget_allocations/${subAdminUid}/${returnRef.key}`] = returnData;
+            updates[`users/${subAdminUid}/allocatedBudget`] = newAllocated;
+            
+            await database.ref().update(updates);
+            return { success: true, returnId: returnRef.key };
+        } catch (error) {
+            console.error('Error processing budget return:', error);
+            throw error;
+        }
+    }
+
     async logout() {
         try {
             await auth.signOut();
