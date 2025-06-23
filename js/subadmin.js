@@ -463,13 +463,15 @@ document.addEventListener('DOMContentLoaded', function() {
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Calculate net allocated budget (allocations minus any reversals)
+                // Calculate total allocated budget (original amount given by admin)
                 const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
                 }, 0);
 
-                // Available balance before spending equals the net allocated amount
-                const availableBalance = totalAllocated;
+                // Calculate available balance (allocated minus returns)
+                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                }, 0);
 
                 // Update user data in memory and database
                 userData = {
