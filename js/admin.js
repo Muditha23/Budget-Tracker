@@ -1201,9 +1201,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 amount: amount,
                 timestamp: timestamp,
                 type: 'allocation',
-                description: description || 'Budget allocation',
-                adminUid: adminUser.uid,
-                adminEmail: adminUser.email
+                adminEmail: adminUser.email,
+                adminId: adminUser.uid,
+                subAdminEmail: subAdminData.email,
+                subAdminUid: subAdminUid
+            };
+
+            // Update budget additions record
+            const budgetAdditionRef = database.ref('budget/additions').push();
+            const budgetAddition = {
+                amount: amount,
+                timestamp: timestamp,
+                adminEmail: adminUser.email,
+                adminId: adminUser.uid,
+                total: amount // This should be cumulative if needed
             };
 
             // Update subadmin's budget info
@@ -1212,8 +1223,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 allocatedBudget: newAllocatedBudget
             });
 
-            // Save allocation record
-            await allocationRef.set(allocation);
+            // Save allocation and budget addition records
+            await Promise.all([
+                allocationRef.set(allocation),
+                budgetAdditionRef.set(budgetAddition)
+            ]);
 
             showMessage('Budget allocated successfully');
             await loadDashboardData(); // Refresh dashboard
@@ -1223,59 +1237,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    async function reverseBudgetFromSubAdmin(subAdminUid, amount, description = '') {
-        try {
-            const timestamp = Date.now();
-            const adminUser = await getCurrentUser();
-            
-            // Get current subadmin data
-            const subAdminRef = database.ref(`users/${subAdminUid}`);
-            const subAdminSnapshot = await subAdminRef.once('value');
-            const subAdminData = subAdminSnapshot.val();
-            
-            if (!subAdminData) {
-                throw new Error('Sub-admin not found');
-            }
-
-            // Check if there's enough available balance to reverse
-            const currentAvailable = subAdminData.availableBalance || 0;
-            if (currentAvailable < amount) {
-                throw new Error('Insufficient available balance for reversal');
-            }
-
-            const currentAllocated = subAdminData.allocatedBudget || 0;
-            const newAvailableBalance = currentAvailable - amount;
-            const newAllocatedBudget = currentAllocated - amount;
-
-            // Create reversal record
-            const reversalRef = database.ref(`budget_allocations/${subAdminUid}`).push();
-            const reversal = {
-                amount: amount,
-                timestamp: timestamp,
-                type: 'reversal',
-                description: description || 'Budget reversal',
-                adminUid: adminUser.uid,
-                adminEmail: adminUser.email
-            };
-
-            // Update subadmin's budget info
-            await subAdminRef.update({
-                availableBalance: newAvailableBalance,
-                allocatedBudget: newAllocatedBudget
-            });
-
-            // Save reversal record
-            await reversalRef.set(reversal);
-
-            showMessage('Budget reversed successfully');
-            await loadDashboardData(); // Refresh dashboard
-        } catch (error) {
-            console.error('Error reversing budget:', error);
-            showMessage(error.message, 'error');
-        }
-    }
-
-    async function handleBudgetReturn(subAdminUid, amount, description = '') {
+    async function handleBudgetReturn(subAdminUid, amount, notes = '') {
         try {
             const timestamp = Date.now();
             const adminUser = await getCurrentUser();
@@ -1303,14 +1265,12 @@ document.addEventListener('DOMContentLoaded', function() {
             const newReturnedBudget = currentReturned + amount;
 
             // Create return record
-            const returnRef = database.ref(`budget_allocations/${subAdminUid}`).push();
+            const returnRef = database.ref(`balance_returns/${subAdminUid}`).push();
             const returnRecord = {
                 amount: amount,
                 timestamp: timestamp,
-                type: 'return',
-                description: description || 'Budget return',
-                adminUid: adminUser.uid,
-                adminEmail: adminUser.email
+                status: 'completed',
+                notes: notes || ''
             };
 
             // Update subadmin's budget info

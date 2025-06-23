@@ -510,23 +510,13 @@ document.addEventListener('DOMContentLoaded', function() {
             let amountClass = 'text-green-600';
             let amountPrefix = '+';
             let actionText = 'Allocated';
-            
-            if (item.type === 'reversal') {
-                amountClass = 'text-red-600';
-                amountPrefix = '-';
-                actionText = 'Reversed';
-            } else if (item.type === 'return') {
-                amountClass = 'text-orange-600';
-                amountPrefix = '-';
-                actionText = 'Returned';
-            }
+            let adminInfo = item.adminEmail ? ` by ${item.adminEmail}` : '';
 
             return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg mb-2">
                     <div class="flex-1">
-                        <p class="font-medium text-gray-800">${actionText} by ${item.adminEmail}</p>
+                        <p class="font-medium text-gray-800">${actionText}${adminInfo}</p>
                         <p class="text-sm text-gray-600">${formatDate(item.timestamp)}</p>
-                        <p class="text-sm text-gray-600">${item.description || ''}</p>
                     </div>
                     <div class="text-right">
                         <p class="font-semibold ${amountClass}">${amountPrefix}${formatCurrency(item.amount)}</p>
@@ -538,7 +528,7 @@ document.addEventListener('DOMContentLoaded', function() {
         historyContainer.innerHTML = historyHTML;
     }
 
-    async function returnBudget(amount, description = '') {
+    async function returnBudget(amount, notes = '') {
         try {
             const user = await getCurrentUser();
             if (!user) throw new Error('User not authenticated');
@@ -554,21 +544,27 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Create return request
-            const returnRef = database.ref(`budget_returns/${user.uid}`).push();
+            const returnRef = database.ref(`balance_returns/${user.uid}`).push();
             await returnRef.set({
                 amount: amount,
                 timestamp: Date.now(),
-                status: 'pending',
-                description: description || 'Budget return request',
-                userEmail: user.email
+                status: 'completed',
+                notes: notes || ''
             });
 
-            showMessage('Return request submitted successfully');
+            // Update user's available balance
+            const userRef = database.ref(`users/${user.uid}`);
+            await userRef.update({
+                availableBalance: userData.availableBalance - amount,
+                returnedBudget: (userData.returnedBudget || 0) + amount
+            });
+
+            showMessage('Return processed successfully');
             
             // Refresh budget display
             await initializeBudgetInfo();
         } catch (error) {
-            console.error('Error submitting return request:', error);
+            console.error('Error processing return:', error);
             showMessage(error.message, 'error');
         }
     }
