@@ -198,20 +198,19 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Get total allocated and used budget
-        const totalAllocated = userData.allocatedBudget || 0;
+        const netAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
         const returnedBudget = userData.returnedBudget || 0;
         const availableBalance = userData.availableBalance || 0;
         
-        // Calculate remaining balance after purchases
+        // Calculate potential remaining after cart total
         const potentialRemaining = availableBalance - cartTotal;
         
-        // Calculate usage percentage based on actual spending against total allocated
-        const usagePercent = totalAllocated > 0 ? ((usedBudget - returnedBudget) / totalAllocated) * 100 : 0;
+        // Calculate usage percentage based on actual spending against net allocated
+        const usagePercent = netAllocated > 0 ? ((usedBudget + cartTotal) / netAllocated) * 100 : 0;
 
         // Update UI elements
-        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        allocatedAmount.textContent = formatCurrency(netAllocated);
         remainingAmount.textContent = formatCurrency(potentialRemaining);
         spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
@@ -448,51 +447,69 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize budget info
     async function initializeBudgetInfo() {
         try {
-            const uid = firebase.auth().currentUser.uid;
-            
-            // Get initial user data
-            const userSnapshot = await database.ref(`users/${uid}`).once('value');
+            const currentUser = auth.currentUser;
+            if (!currentUser) return;
+
+            // Get user data including allocations and transactions
+            const [userSnapshot, allocationsSnapshot, purchasesSnapshot, returnsSnapshot] = await Promise.all([
+                database.ref(`users/${currentUser.uid}`).once('value'),
+                database.ref(`budget_allocations/${currentUser.uid}`).once('value'),
+                database.ref(`purchases/${currentUser.uid}`).once('value'),
+                database.ref(`budget_returns/${currentUser.uid}`).once('value')
+            ]);
+
             userData = userSnapshot.val();
+            if (!userData) return;
 
-            if (!userData) {
-                showMessage('Error: User data not found', 'error');
-                return;
-            }
+            // Calculate total from all allocations
+            let totalAllocated = 0;
+            let totalReversed = 0;
+            let totalReturned = 0;
 
-            // Set up real-time listener for budget allocations
-            database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
-                const allocations = allocationsSnapshot.val() || {};
-                
-                // Calculate total allocated budget (original amount given by admin)
-                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
-                }, 0);
-
-                // Calculate available balance (allocated minus returns)
-                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
-                }, 0);
-
-                // Update user data in memory and database
-                userData = {
-                    ...userData,
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
-                };
-
-                // Update the database with new values
-                await database.ref(`users/${uid}`).update({
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
-                });
-
-                // Update budget display
-                updateBudgetDisplay();
-                
-                // Generate and display budget history
-                generateBudgetHistory(allocations);
+            // Process allocations
+            const allocations = allocationsSnapshot.val() || {};
+            Object.values(allocations).forEach(allocation => {
+                if (allocation.type === 'allocation') {
+                    totalAllocated += allocation.amount;
+                } else if (allocation.type === 'reversal') {
+                    totalReversed += allocation.amount;
+                } else if (allocation.type === 'return') {
+                    totalReturned += allocation.amount;
+                }
             });
 
+            // Calculate total purchases
+            let totalPurchases = 0;
+            const purchases = purchasesSnapshot.val() || {};
+            Object.values(purchases).forEach(purchase => {
+                totalPurchases += purchase.totalAmount || 0;
+            });
+
+            // Calculate final available balance
+            const netAllocated = totalAllocated - totalReversed - totalReturned;
+            const availableBalance = netAllocated - totalPurchases;
+
+            // Update user data in state and database
+            userData = {
+                ...userData,
+                allocatedBudget: netAllocated,
+                usedBudget: totalPurchases,
+                returnedBudget: totalReturned,
+                availableBalance: availableBalance
+            };
+
+            // Update database with new calculations
+            await database.ref(`users/${currentUser.uid}`).update({
+                allocatedBudget: netAllocated,
+                usedBudget: totalPurchases,
+                returnedBudget: totalReturned,
+                availableBalance: availableBalance
+            });
+
+            // Update UI
+            updateBudgetDisplay();
+            generateBudgetHistory(allocations);
+            
         } catch (error) {
             console.error('Error initializing budget info:', error);
             showMessage('Error loading budget information', 'error');

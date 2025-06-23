@@ -1180,41 +1180,68 @@ document.addEventListener('DOMContentLoaded', function() {
             const timestamp = Date.now();
             const adminUser = auth.currentUser;
 
-            // Get current user data
-            const userSnapshot = await database.ref(`users/${subAdminUid}`).once('value');
+            // Get all necessary data
+            const [userSnapshot, allocationsSnapshot, purchasesSnapshot, returnsSnapshot] = await Promise.all([
+                database.ref(`users/${subAdminUid}`).once('value'),
+                database.ref(`budget_allocations/${subAdminUid}`).once('value'),
+                database.ref(`purchases/${subAdminUid}`).once('value'),
+                database.ref(`budget_returns/${subAdminUid}`).once('value')
+            ]);
+
             const userData = userSnapshot.val();
-            
             if (!userData) {
                 throw new Error('User not found');
             }
 
-            // Get current allocation data
-            const currentAllocated = userData.allocatedBudget || 0;
-            const currentAvailable = userData.availableBalance || 0;
-            
-            let newAllocatedTotal, newAvailableBalance;
-            
+            // Calculate current totals
+            let totalAllocated = 0;
+            let totalReversed = 0;
+            let totalReturned = 0;
+
+            // Process existing allocations
+            const allocations = allocationsSnapshot.val() || {};
+            Object.values(allocations).forEach(allocation => {
+                if (allocation.type === 'allocation') {
+                    totalAllocated += allocation.amount;
+                } else if (allocation.type === 'reversal') {
+                    totalReversed += allocation.amount;
+                } else if (allocation.type === 'return') {
+                    totalReturned += allocation.amount;
+                }
+            });
+
+            // Calculate total purchases
+            let totalPurchases = 0;
+            const purchases = purchasesSnapshot.val() || {};
+            Object.values(purchases).forEach(purchase => {
+                totalPurchases += purchase.totalAmount || 0;
+            });
+
+            // Calculate current net allocated and available balance
+            let netAllocated = totalAllocated - totalReversed - totalReturned;
+            let availableBalance = netAllocated - totalPurchases;
+
+            // Apply the new transaction
             if (type === 'allocation') {
-                // For new allocation, increase both allocated and available
-                newAllocatedTotal = currentAllocated + amount;
-                newAvailableBalance = currentAvailable + amount;
+                netAllocated += amount;
+                availableBalance += amount;
             } else if (type === 'reversal') {
-                // For reversal, decrease both allocated and available
-                if (currentAvailable < amount) {
+                if (availableBalance < amount) {
                     throw new Error('Cannot reverse more than available balance');
                 }
-                newAllocatedTotal = currentAllocated - amount;
-                newAvailableBalance = currentAvailable - amount;
+                netAllocated -= amount;
+                availableBalance -= amount;
             } else if (type === 'return') {
-                // For returns, only decrease allocated (available is already decreased)
-                newAllocatedTotal = currentAllocated - amount;
-                newAvailableBalance = currentAvailable;
+                netAllocated -= amount;
+                // availableBalance is already reduced when subadmin returns
             }
 
             // Update user's budget information
             await database.ref(`users/${subAdminUid}`).update({
-                allocatedBudget: newAllocatedTotal,
-                availableBalance: newAvailableBalance
+                allocatedBudget: netAllocated,
+                availableBalance: availableBalance,
+                usedBudget: totalPurchases,
+                returnedBudget: totalReturned
             });
 
             // Record the allocation transaction
