@@ -203,7 +203,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const remaining = totalAllocated - usedBudget;
         const potentialUsed = usedBudget + cartTotal;
         const potentialRemaining = totalAllocated - potentialUsed;
-        const usagePercent = (potentialUsed / totalAllocated) * 100;
+        
+        // Calculate usage percentage based on actual spending (usedBudget) against total allocated
+        const usagePercent = (usedBudget / totalAllocated) * 100;
 
         // Update UI elements
         allocatedAmount.textContent = formatCurrency(totalAllocated);
@@ -876,10 +878,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 notes: `Balance returned${returnNotes.value.trim() ? ': ' + returnNotes.value.trim() : ''}`
             };
 
+            // Update user's usedBudget to reflect the returned amount
+            const updatedUsedBudget = userData.usedBudget || 0;
+            const newAllocatedBudget = (userData.allocatedBudget || 0) - amount;
+
             // Perform updates atomically
             await database.ref().update({
                 [`balance_returns/${uid}/${returnRef.key}`]: returnData,
-                [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData
+                [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData,
+                [`users/${uid}/allocatedBudget`]: newAllocatedBudget,
+                [`users/${uid}/usedBudget`]: updatedUsedBudget
             });
 
             // Reset form
