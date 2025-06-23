@@ -205,11 +205,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusHTML = subAdminArray.map(([uid, user]) => {
             const userAllocations = allocations[uid] || {};
             
-            // Calculate total allocated budget (sum of allocations minus returns)
+            // Sort allocations by timestamp to process them in chronological order
+            const sortedAllocations = Object.values(userAllocations)
+                .sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Calculate total allocated budget considering full returns as resets
             let totalAllocated = 0;
-            Object.values(userAllocations).forEach(allocation => {
+            sortedAllocations.forEach(allocation => {
                 if (allocation.type === 'reversal') {
-                    totalAllocated -= allocation.amount;
+                    // If this is a full return (matches current total), reset the total
+                    if (allocation.amount >= totalAllocated) {
+                        totalAllocated = 0;
+                    } else {
+                        totalAllocated -= allocation.amount;
+                    }
                 } else {
                     totalAllocated += allocation.amount;
                 }
@@ -218,7 +227,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Get the actual spent amount
             const actualSpentBudget = user.usedBudget || 0;
             
-            // Calculate remaining balance (we don't add returnedBudget here since it's already counted in reversals)
+            // Calculate remaining balance
             const remainingBalance = totalAllocated - actualSpentBudget;
             
             // Calculate usage percentage based on spent vs allocated
@@ -710,13 +719,24 @@ document.addEventListener('DOMContentLoaded', function() {
             // Calculate total allocated to sub-admins (considering both allocations and reversals)
             let totalAllocated = 0;
             Object.values(allocations).forEach(userAllocations => {
-                Object.values(userAllocations).forEach(allocation => {
+                // Sort allocations by timestamp
+                const sortedAllocations = Object.values(userAllocations)
+                    .sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Calculate user's current allocation after full returns
+                let userCurrentAllocation = 0;
+                sortedAllocations.forEach(allocation => {
                     if (allocation.type === 'reversal') {
-                        totalAllocated -= allocation.amount;
+                        if (allocation.amount >= userCurrentAllocation) {
+                            userCurrentAllocation = 0;
+                        } else {
+                            userCurrentAllocation -= allocation.amount;
+                        }
                     } else {
-                        totalAllocated += allocation.amount;
+                        userCurrentAllocation += allocation.amount;
                     }
                 });
+                totalAllocated += userCurrentAllocation;
             });
 
             // Update budget overview
@@ -756,11 +776,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const budgetHTML = Object.entries(subAdmins).map(([uid, user]) => {
                 const userAllocations = allocations[uid] || {};
                 
-                // Calculate total allocated (sum of allocations minus reversals)
+                // Sort allocations by timestamp
+                const sortedAllocations = Object.values(userAllocations)
+                    .sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Calculate total allocated considering full returns as resets
                 let totalAllocatedToUser = 0;
-                Object.values(userAllocations).forEach(allocation => {
+                sortedAllocations.forEach(allocation => {
                     if (allocation.type === 'reversal') {
-                        totalAllocatedToUser -= allocation.amount;
+                        if (allocation.amount >= totalAllocatedToUser) {
+                            totalAllocatedToUser = 0;
+                        } else {
+                            totalAllocatedToUser -= allocation.amount;
+                        }
                     } else {
                         totalAllocatedToUser += allocation.amount;
                     }
@@ -768,10 +796,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 const used = user.usedBudget || 0;
                 
-                // Calculate remaining balance (don't include returnedBudget as it's counted in reversals)
+                // Calculate remaining balance
                 const remaining = totalAllocatedToUser - used;
                 
-                // Calculate returned amount from negative allocation (due to reversals)
+                // Calculate returned amount from negative allocation
                 const returned = Math.abs(totalAllocatedToUser < 0 ? totalAllocatedToUser : 0);
                 
                 // Calculate usage percentage based on allocated amount
