@@ -919,5 +919,67 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('[data-section="return"]').addEventListener('click', () => {
         initializeReturnSection();
     });
+
+    // Budget Return Functions
+    async function returnBudgetToAdmin(amount) {
+        try {
+            const subAdminUid = auth.currentUser.uid;
+            const timestamp = Date.now();
+
+            // Get current budget info
+            const userRef = database.ref(`users/${subAdminUid}`);
+            const userSnapshot = await userRef.once('value');
+            const userData = userSnapshot.val() || {};
+
+            const currentAllocated = userData.allocatedBudget || 0;
+            const currentAvailable = userData.availableBalance || 0;
+            const currentUsed = userData.usedBudget || 0;
+
+            // Check if amount can be returned
+            if (currentAvailable < amount) {
+                showMessage('Cannot return more than available balance', 'error');
+                return false;
+            }
+
+            // Record return
+            await database.ref(`budget_allocations/${subAdminUid}`).push({
+                amount: amount,
+                timestamp: timestamp,
+                subAdminUid: subAdminUid,
+                type: 'return'
+            });
+
+            // Update sub-admin's budget
+            await userRef.update({
+                allocatedBudget: currentAllocated - amount,
+                availableBalance: currentAvailable - amount,
+                returnedBudget: (userData.returnedBudget || 0) + amount
+            });
+
+            showMessage('Budget returned successfully');
+            await initializeBudgetInfo();
+            return true;
+        } catch (error) {
+            console.error('Error returning budget:', error);
+            showMessage('Failed to return budget', 'error');
+            return false;
+        }
+    }
+
+    // Add event listener for budget return
+    const returnBudgetForm = document.getElementById('returnBudgetForm');
+    if (returnBudgetForm) {
+        returnBudgetForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const amount = parseFloat(this.querySelector('#returnAmount').value);
+            
+            if (amount > 0) {
+                await returnBudgetToAdmin(amount);
+                this.reset();
+            } else {
+                showMessage('Please enter a valid amount', 'error');
+            }
+        });
+    }
 });
 

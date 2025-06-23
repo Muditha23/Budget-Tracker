@@ -85,6 +85,56 @@
         <div id="loadingMessage" class="mt-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg hidden">
             Processing...
         </div>
+
+        <!-- Budget Return Section -->
+        <section id="budgetReturn" class="section hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <h2 class="text-2xl font-bold mb-4">Return Budget to Admin</h2>
+                
+                <!-- Budget Overview -->
+                <div class="mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h4 class="text-sm font-medium text-gray-500">Total Allocated</h4>
+                            <p id="totalAllocated" class="text-2xl font-bold text-gray-900">$0.00</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h4 class="text-sm font-medium text-gray-500">Available Balance</h4>
+                            <p id="availableBalance" class="text-2xl font-bold text-green-600">$0.00</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h4 class="text-sm font-medium text-gray-500">Total Returned</h4>
+                            <p id="totalReturned" class="text-2xl font-bold text-blue-600">$0.00</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Return Budget Form -->
+                <div class="mb-8">
+                    <form id="returnBudgetForm" class="space-y-4">
+                        <div>
+                            <label for="returnAmount" class="block text-sm font-medium text-gray-700">Amount to Return</label>
+                            <div class="mt-1">
+                                <input type="number" step="0.01" min="0" id="returnAmount" name="returnAmount" required
+                                    class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                            </div>
+                        </div>
+                        <button type="submit"
+                            class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Return Budget
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Return History -->
+                <div>
+                    <h3 class="text-xl font-semibold mb-4">Return History</h3>
+                    <div id="returnHistory" class="space-y-4">
+                        <!-- Return history will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script src="js/firebase-config.js"></script>
