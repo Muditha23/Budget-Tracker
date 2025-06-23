@@ -205,20 +205,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusHTML = subAdminArray.map(([uid, user]) => {
             const userAllocations = allocations[uid] || {};
             
-            // Calculate total allocated budget (sum of all allocations)
-            const totalAllocated = Object.values(userAllocations).reduce((sum, allocation) => {
-                return sum + allocation.amount;
-            }, 0);
+            // Calculate total allocated budget (sum of allocations minus returns)
+            let totalAllocated = 0;
+            Object.values(userAllocations).forEach(allocation => {
+                if (allocation.type === 'reversal') {
+                    totalAllocated -= allocation.amount;
+                } else {
+                    totalAllocated += allocation.amount;
+                }
+            });
 
             // Get the actual spent amount and returns
             const actualSpentBudget = user.usedBudget || 0;
             const returnedAmount = user.returnedBudget || 0;
             
-            // Calculate remaining balance (allocated - spent - returned)
+            // Calculate remaining balance
             const remainingBalance = totalAllocated - actualSpentBudget - returnedAmount;
             
-            // Calculate usage percentage based on spent vs allocated
-            const usagePercent = ((actualSpentBudget) / (totalAllocated || 1)) * 100;
+            // Calculate usage percentage based on spent vs allocated (excluding returns)
+            const effectiveAllocation = totalAllocated - returnedAmount;
+            const usagePercent = effectiveAllocation > 0 ? (actualSpentBudget / effectiveAllocation) * 100 : 0;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -703,11 +709,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const subAdmins = usersSnapshot.val() || {};
             const allocations = allocationsSnapshot.val() || {};
 
-            // Calculate total allocated to sub-admins (only sum up allocations, don't subtract reversals)
+            // Calculate total allocated to sub-admins (considering both allocations and reversals)
             let totalAllocated = 0;
             Object.values(allocations).forEach(userAllocations => {
                 Object.values(userAllocations).forEach(allocation => {
-                    totalAllocated += allocation.amount;
+                    if (allocation.type === 'reversal') {
+                        totalAllocated -= allocation.amount;
+                    } else {
+                        totalAllocated += allocation.amount;
+                    }
                 });
             });
 
@@ -748,15 +758,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const budgetHTML = Object.entries(subAdmins).map(([uid, user]) => {
                 const userAllocations = allocations[uid] || {};
                 
-                // Calculate total allocated (sum of all allocations)
-                const totalAllocatedToUser = Object.values(userAllocations).reduce((sum, allocation) => {
-                    return sum + allocation.amount;
-                }, 0);
+                // Calculate total allocated (sum of allocations minus reversals)
+                let totalAllocatedToUser = 0;
+                Object.values(userAllocations).forEach(allocation => {
+                    if (allocation.type === 'reversal') {
+                        totalAllocatedToUser -= allocation.amount;
+                    } else {
+                        totalAllocatedToUser += allocation.amount;
+                    }
+                });
                 
                 const used = user.usedBudget || 0;
                 const returned = user.returnedBudget || 0;
                 const remaining = totalAllocatedToUser - used - returned;
-                const usagePercent = totalAllocatedToUser > 0 ? (used / totalAllocatedToUser) * 100 : 0;
+                
+                // Calculate usage percentage based on effective allocation (excluding returns)
+                const effectiveAllocation = totalAllocatedToUser - returned;
+                const usagePercent = effectiveAllocation > 0 ? (used / effectiveAllocation) * 100 : 0;
                 
                 return `
                     <div class="bg-gray-50 rounded-lg p-4">
