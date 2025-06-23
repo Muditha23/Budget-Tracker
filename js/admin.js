@@ -210,27 +210,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 return sum + allocation.amount;
             }, 0);
 
-            // Get the actual spent amount (usedBudget)
+            // Get the actual spent amount and returns
             const actualSpentBudget = user.usedBudget || 0;
-            
-            // Calculate remaining balance (allocated - used - returns)
             const returnedAmount = user.returnedBudget || 0;
+            
+            // Calculate remaining balance (allocated - spent - returned)
             const remainingBalance = totalAllocated - actualSpentBudget - returnedAmount;
             
-            // Calculate usage percentage based on actual spent against total allocated
+            // Calculate usage percentage based on spent vs allocated
             const usagePercent = ((actualSpentBudget) / (totalAllocated || 1)) * 100;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <div>
-                        <p class="font-medium text-gray-800">${user.email}</p>
-                        <p class="text-sm text-gray-600">Total Allocated: ${formatCurrency(totalAllocated)}</p>
-                        <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
-                        <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedAmount)}</p>
-                        <p class="text-sm font-medium text-blue-600">Remaining: ${formatCurrency(remainingBalance)}</p>
+                    <div class="grid grid-cols-2 gap-4 flex-1">
+                        <div>
+                            <p class="font-medium text-gray-800">${user.email}</p>
+                            <p class="text-sm text-gray-600">Allocated: ${formatCurrency(totalAllocated)}</p>
+                            <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedAmount)}</p>
+                            <p class="text-sm font-medium text-blue-600">Remaining: ${formatCurrency(remainingBalance)}</p>
+                            <p class="text-sm font-medium ${statusColor}">Usage: ${Math.round(usagePercent)}%</p>
+                        </div>
                     </div>
-                    <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
                 </div>
             `;
         }).join('');
@@ -699,15 +703,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const subAdmins = usersSnapshot.val() || {};
             const allocations = allocationsSnapshot.val() || {};
 
-            // Calculate total allocated to sub-admins
+            // Calculate total allocated to sub-admins (only sum up allocations, don't subtract reversals)
             let totalAllocated = 0;
             Object.values(allocations).forEach(userAllocations => {
                 Object.values(userAllocations).forEach(allocation => {
-                    if (allocation.type === 'reversal') {
-                        totalAllocated -= allocation.amount;
-                    } else {
-                        totalAllocated += allocation.amount;
-                    }
+                    totalAllocated += allocation.amount;
                 });
             });
 
@@ -747,15 +747,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const budgetHTML = Object.entries(subAdmins).map(([uid, user]) => {
                 const userAllocations = allocations[uid] || {};
+                
+                // Calculate total allocated (sum of all allocations)
                 const totalAllocatedToUser = Object.values(userAllocations).reduce((sum, allocation) => {
-                    if (allocation.type === 'reversal') {
-                        return sum - allocation.amount;
-                    }
                     return sum + allocation.amount;
                 }, 0);
                 
                 const used = user.usedBudget || 0;
-                const remaining = totalAllocatedToUser - used;
+                const returned = user.returnedBudget || 0;
+                const remaining = totalAllocatedToUser - used - returned;
                 const usagePercent = totalAllocatedToUser > 0 ? (used / totalAllocatedToUser) * 100 : 0;
                 
                 return `
@@ -764,7 +764,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <h4 class="font-medium text-gray-800">${user.email}</h4>
                             <span class="text-sm text-gray-600">${Math.round(usagePercent)}% used</span>
                         </div>
-                        <div class="grid grid-cols-3 gap-4 text-sm mb-3">
+                        <div class="grid grid-cols-4 gap-4 text-sm mb-3">
                             <div class="text-center">
                                 <p class="text-gray-600">Allocated</p>
                                 <p class="font-semibold text-blue-600">${formatCurrency(totalAllocatedToUser)}</p>
@@ -772,6 +772,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             <div class="text-center">
                                 <p class="text-gray-600">Used</p>
                                 <p class="font-semibold text-red-600">${formatCurrency(used)}</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-gray-600">Returned</p>
+                                <p class="font-semibold text-yellow-600">${formatCurrency(returned)}</p>
                             </div>
                             <div class="text-center">
                                 <p class="text-gray-600">Remaining</p>
