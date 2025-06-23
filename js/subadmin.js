@@ -232,11 +232,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const remainingAfterPurchases = availableBalance - usedBudget;
         const potentialRemaining = remainingAfterPurchases - cartTotal;
         
-        // Calculate usage percentage based on actual spending against total allocated
-        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
+        // Calculate effective total budget (what's actually available to spend)
+        const effectiveTotalBudget = usedBudget + Math.max(0, availableBalance - usedBudget);
+        
+        // Calculate usage percentage based on actual spending against effective total
+        const usagePercent = effectiveTotalBudget > 0 ? (usedBudget / effectiveTotalBudget) * 100 : 0;
 
         // Update UI elements
-        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        allocatedAmount.textContent = formatCurrency(effectiveTotalBudget);
         remainingAmount.textContent = formatCurrency(potentialRemaining);
         spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
