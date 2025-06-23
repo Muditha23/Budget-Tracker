@@ -51,8 +51,7 @@ class AuthManager {
                 allocatedBudget: parseFloat(budgetAmount),
                 usedBudget: 0,
                 createdAt: firebase.database.ServerValue.TIMESTAMP,
-                createdBy: this.currentUser.uid,
-                adminId: this.currentUser.uid
+                createdBy: this.currentUser.uid
             });
 
             // Initialize sub-admin's purchase history
@@ -111,50 +110,50 @@ class SubAdminAuth {
     constructor() {
         this.currentUser = null;
         this.userData = null;
+        this.init();
+    }
 
-        // Set up authentication state observer
-        auth.onAuthStateChanged(async (user) => {
+    init() {
+        auth.onAuthStateChanged((user) => {
             if (user) {
                 this.currentUser = user;
-                try {
-                    // Get user data
-                    const userSnapshot = await database.ref('users/' + user.uid).once('value');
-                    this.userData = userSnapshot.val();
-                    
-                    // Check if user is a sub-admin
-                    if (this.userData && this.userData.role === 'subadmin') {
-                        // Initialize interface
-                        if (typeof window.initializeSubAdminInterface === 'function') {
-                            window.initializeSubAdminInterface(this.userData);
-                        }
-                    } else {
-                        console.error('User is not a sub-admin');
-                        this.logout();
-                        window.location.href = 'login.html';
-                    }
-                } catch (error) {
-                    console.error('Error initializing sub-admin:', error);
-                    showMessage('Error initializing interface. Please try again.', 'error');
-                }
+                this.verifySubAdminAccess();
             } else {
-                this.currentUser = null;
-                this.userData = null;
                 window.location.href = 'login.html';
             }
         });
+    }
+
+    async verifySubAdminAccess() {
+        try {
+            const userSnapshot = await database.ref('users/' + this.currentUser.uid).once('value');
+            const userData = userSnapshot.val();
+
+            if (!userData || userData.role !== 'subadmin') {
+                await auth.signOut();
+                window.location.href = 'login.html';
+                return;
+            }
+
+            this.userData = userData;
+
+            // User is verified sub-admin, initialize interface
+            if (typeof initializeSubAdminInterface === 'function') {
+                initializeSubAdminInterface(userData);
+            }
+        } catch (error) {
+            console.error('Error verifying sub admin access:', error);
+            await auth.signOut();
+            window.location.href = 'login.html';
+        }
     }
 
     async submitPurchase(cartItems) {
         try {
             const totalAmount = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
-            // Get current user data to ensure we have the latest values
-            const userSnapshot = await database.ref('users/' + this.currentUser.uid).once('value');
-            const currentUserData = userSnapshot.val();
-            const currentUsedBudget = currentUserData.usedBudget || 0;
-
             // Check if user has enough budget
-            if (currentUsedBudget + totalAmount > currentUserData.allocatedBudget) {
+            if (this.userData.usedBudget + totalAmount > this.userData.allocatedBudget) {
                 throw new Error('Insufficient budget for this purchase.');
             }
 
@@ -172,21 +171,8 @@ class SubAdminAuth {
             const purchaseRef = await database.ref('purchases/' + this.currentUser.uid).push(purchaseData);
 
             // Update user's used budget
-            const newUsedBudget = currentUsedBudget + totalAmount;
+            const newUsedBudget = this.userData.usedBudget + totalAmount;
             await database.ref('users/' + this.currentUser.uid + '/usedBudget').set(newUsedBudget);
-
-            // Remove purchased predefined items from items collection
-            const itemsToRemove = cartItems
-                .filter(item => !item.id.startsWith('custom_'))
-                .map(item => item.id);
-            
-            if (itemsToRemove.length > 0) {
-                const updates = {};
-                itemsToRemove.forEach(itemId => {
-                    updates['/items/' + itemId] = null;
-                });
-                await database.ref().update(updates);
-            }
 
             // Update local userData
             this.userData.usedBudget = newUsedBudget;

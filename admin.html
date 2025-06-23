@@ -81,30 +81,7 @@
             <!-- Manage Sub Admins Section -->
             <div id="subadmins" class="section hidden">
                 <h2 class="text-2xl font-bold text-gray-800 mb-6">Manage Sub Admins</h2>
-
-                <div class="bg-white rounded-lg shadow p-6 mb-6">
-                    <h3 class="text-lg font-semibold text-gray-700 mb-4">Main Account Balance</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div class="text-center p-4 bg-blue-50 rounded-lg">
-                            <p class="text-sm text-gray-600 mb-1">Current Balance</p>
-                            <p id="mainAccountBalance" class="text-2xl font-bold text-blue-600">$0.00</p>
-                        </div>
-                        <div class="text-center p-4 bg-green-50 rounded-lg">
-                            <p class="text-sm text-gray-600 mb-1">Last Updated</p>
-                            <p id="lastBalanceUpdate" class="text-sm text-gray-600">Never</p>
-                        </div>
-                    </div>
-                    <div class="mt-4 flex gap-2">
-                        <button id="refreshBalanceBtn" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
-                            Refresh Balance
-                        </button>
-                        <button id="updateBalanceBtn" class="bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors">
-                            Update Balance
-                        </button>
-                    </div>
-                </div>
-
-
+                
                 <div class="bg-white rounded-lg shadow p-6 mb-6">
                     <h3 class="text-lg font-semibold text-gray-700 mb-4">Add New Sub Admin</h3>
                     <form id="addSubAdminForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -154,10 +131,8 @@
                     <form id="addItemForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input type="text" id="itemName" placeholder="Item Name" required 
                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        <select id="assignedSubAdmin" required
+                        <input type="number" id="itemPrice" placeholder="Price" step="0.01" min="0" required 
                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            <option value="">Assign to Sub Admin...</option>
-                        </select>
                         <button type="submit" class="md:col-span-2 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
                             Add Item
                         </button>
@@ -182,35 +157,9 @@
                         <input type="number" id="totalBudgetInput" placeholder="Total Budget Amount" step="0.01" min="0" required 
                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                         <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
-                            Add to Total Budget
+                            Update Budget
                         </button>
                     </form>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <h3 class="text-lg font-semibold text-gray-700 mb-4">Total Budget Overview</h3>
-                        <div class="space-y-4">
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Total Funds Added:</span>
-                                <span id="totalFundsAdded" class="text-2xl font-bold text-blue-600">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Total Allocated to Sub-Admins:</span>
-                                <span id="totalAllocatedToSubAdmins" class="text-2xl font-bold text-green-600">$0.00</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Available for Allocation:</span>
-                                <span id="availableForAllocation" class="text-2xl font-bold text-orange-600">$0.00</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <h3 class="text-lg font-semibold text-gray-700 mb-4">Budget Addition History</h3>
-                        <div id="budgetAdditionHistory" class="space-y-3 max-h-60 overflow-y-auto">
-                            <p class="text-gray-500">No budget additions yet</p>
-                        </div>
-                    </div>
                 </div>
 
                 <div class="bg-white rounded-lg shadow p-6">

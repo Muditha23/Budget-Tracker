@@ -1,134 +1,25 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
     "users": {
-      ".read": "auth != null",
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        "role": {
-          ".validate": "newData.val() === 'admin' || newData.val() === 'subadmin'"
-        }
+        ".read": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
       }
     },
     "items": {
       ".read": "auth != null",
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'subadmin')",
-      ".indexOn": ["assignedTo", "status"],
-      "$itemId": {
-        ".validate": "newData.hasChildren(['name', 'assignedTo', 'status'])",
-        "price": {
-          ".validate": "!newData.exists() || (newData.isNumber() && newData.val() >= 0)"
-        }
-      }
-    },
-    "items_assignments": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        "$itemId": {
-          "assigned": {
-            ".validate": "newData.isBoolean()"
-          }
-        }
-      }
-    },
-    "notifications": {
-      ".read": "auth != null",
-      "admin": {
-        ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-        ".write": "auth != null",
-        "$notificationId": {
-          ".validate": "newData.hasChildren(['type', 'status', 'timestamp'])"
-        }
-      },
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        "$notificationId": {
-          ".validate": "newData.hasChildren(['type', 'status', 'timestamp'])",
-          "status": {
-            ".validate": "newData.val() === 'read' || newData.val() === 'unread'"
-          },
-          "type": {
-            ".validate": "newData.val() === 'new_item' || newData.val() === 'item_assigned' || newData.val() === 'item_unassigned' || newData.val() === 'price_set'"
-          }
-        }
-      }
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
     },
     "purchases": {
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && auth.uid === $uid",
-        "$purchaseId": {
-          ".validate": "newData.hasChildren(['items', 'totalAmount', 'timestamp', 'userId', 'userEmail'])",
-          "totalAmount": {
-            ".validate": "newData.isNumber() && newData.val() >= 0"
-          },
-          "items": {
-            "$itemId": {
-              ".validate": "newData.hasChildren(['name', 'price', 'quantity'])",
-              "price": {
-                ".validate": "newData.isNumber() && newData.val() >= 0"
-              },
-              "quantity": {
-                ".validate": "newData.isNumber() && newData.val() > 0"
-              }
-            }
-          }
-        }
+        ".read": "auth != null && (auth.uid == $uid || root.child('users').child(auth.uid).child('role').val() == 'admin')",
+        ".write": "auth != null && auth.uid == $uid && root.child('users').child(auth.uid).child('role').val() == 'subadmin'"
       }
     },
     "budget": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      "total": {
-        ".validate": "newData.isNumber() && newData.val() >= 0"
-      },
-      "additions": {
-        "$additionId": {
-          ".validate": "newData.hasChildren(['amount', 'timestamp', 'adminId', 'adminEmail'])",
-          "amount": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          }
-        }
-      }
-    },
-    "budget_allocations": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        "$allocationId": {
-          ".validate": "newData.hasChildren(['amount', 'timestamp', 'type'])",
-          "amount": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          },
-          "type": {
-            ".validate": "newData.val() === 'allocation' || newData.val() === 'reversal'"
-          }
-        }
-      }
-    },
-    "balance_returns": {
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && auth.uid === $uid",
-        "$returnId": {
-          ".validate": "newData.hasChildren(['amount', 'timestamp', 'status'])",
-          "amount": {
-            ".validate": "newData.isNumber() && newData.val() > 0"
-          },
-          "status": {
-            ".validate": "newData.val() === 'completed'"
-          }
-        }
-      }
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() == 'admin'"
     }
   }
-} 
+}
+
