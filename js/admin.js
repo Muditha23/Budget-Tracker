@@ -1209,12 +1209,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const timestamp = Date.now();
             const adminUser = auth.currentUser;
 
-            // Get current user data to check current allocated budget
-            const userSnapshot = await database.ref(`users/${subAdminUid}`).once('value');
-            const userData = userSnapshot.val() || {};
-            
-            // Create new allocation record
-            const newAllocation = {
+            // Create batch updates object
+            const updates = {};
+
+            // Update user data
+            updates[`/users/${subAdminUid}/allocatedBudget`] = parseFloat(amount);
+            updates[`/users/${subAdminUid}/availableBalance`] = parseFloat(amount);
+            updates[`/users/${subAdminUid}/usedBudget`] = 0;
+            updates[`/users/${subAdminUid}/returnedBudget`] = 0;
+            updates[`/users/${subAdminUid}/role`] = 'subadmin';
+
+            // Clear existing allocations and add new one
+            const allocationKey = `allocation_${timestamp}`;
+            updates[`/budget_allocations/${subAdminUid}/${allocationKey}`] = {
                 amount: parseFloat(amount),
                 timestamp: timestamp,
                 type: 'allocation',
@@ -1223,23 +1230,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 adminEmail: adminUser.email
             };
 
-            // Update user's budget
-            await database.ref(`users/${subAdminUid}`).update({
-                allocatedBudget: parseFloat(amount), // Set to new amount directly
-                availableBalance: parseFloat(amount), // Set available balance to new amount
-                usedBudget: 0, // Reset used budget
-                returnedBudget: 0 // Reset returned budget
-            });
+            // Apply all updates atomically
+            await database.ref().update(updates);
 
-            // Add allocation record
-            await database.ref(`budget_allocations/${subAdminUid}/allocation_${timestamp}`).set(newAllocation);
-
-            // Force refresh all relevant data
-            await Promise.all([
-                database.ref(`users/${subAdminUid}`).once('value'),
-                loadDashboardData()
-            ]);
-
+            // Force refresh
+            await loadDashboardData();
+            
             showMessage('Budget allocated successfully');
         } catch (error) {
             console.error('Error allocating budget:', error);
@@ -1252,18 +1248,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const timestamp = Date.now();
             const adminUser = auth.currentUser;
 
-            // Get current user data
-            const userSnapshot = await database.ref(`users/${subAdminUid}`).once('value');
-            const userData = userSnapshot.val();
-            
-            // Check if reversal amount is valid
-            const currentAllocated = userData.allocatedBudget || 0;
-            if (amount > currentAllocated) {
-                throw new Error('Cannot reverse more than allocated budget');
-            }
+            // Create batch updates object
+            const updates = {};
 
-            // Create reversal record
-            const reversalRecord = {
+            // Update user data to zero
+            updates[`/users/${subAdminUid}/allocatedBudget`] = 0;
+            updates[`/users/${subAdminUid}/availableBalance`] = 0;
+            updates[`/users/${subAdminUid}/usedBudget`] = 0;
+            updates[`/users/${subAdminUid}/returnedBudget`] = 0;
+            updates[`/users/${subAdminUid}/role`] = 'subadmin';
+
+            // Add reversal record
+            const reversalKey = `reversal_${timestamp}`;
+            updates[`/budget_allocations/${subAdminUid}/${reversalKey}`] = {
                 amount: parseFloat(amount),
                 timestamp: timestamp,
                 type: 'reversal',
@@ -1272,38 +1269,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 adminEmail: adminUser.email
             };
 
-            // Reset all budget values to 0
-            await database.ref(`users/${subAdminUid}`).update({
-                allocatedBudget: 0,
-                availableBalance: 0,
-                usedBudget: 0,
-                returnedBudget: 0
-            });
+            // Apply all updates atomically
+            await database.ref().update(updates);
 
-            // Add reversal record
-            await database.ref(`budget_allocations/${subAdminUid}/reversal_${timestamp}`).set(reversalRecord);
-
-            // Clear any existing allocations
-            const allocationsRef = database.ref(`budget_allocations/${subAdminUid}`);
-            const allocationsSnapshot = await allocationsRef.once('value');
-            const updates = {};
-            
-            allocationsSnapshot.forEach(childSnapshot => {
-                if (childSnapshot.val().type === 'allocation') {
-                    updates[childSnapshot.key] = null;
-                }
-            });
-            
-            // Apply the updates to clear old allocations
-            if (Object.keys(updates).length > 0) {
-                await allocationsRef.update(updates);
-            }
-
-            // Force refresh all relevant data
-            await Promise.all([
-                database.ref(`users/${subAdminUid}`).once('value'),
-                loadDashboardData()
-            ]);
+            // Force refresh
+            await loadDashboardData();
 
             showMessage('Budget reversed successfully');
         } catch (error) {
