@@ -216,20 +216,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const sortedAllocations = Object.values(userAllocations)
                 .sort((a, b) => a.timestamp - b.timestamp);
             
-            // Calculate total allocated budget and current balance
-            let totalAllocated = 0;
-            let currentBalance = 0;
+            // Calculate total budget and available balance
+            let totalBudget = 0;
+            let availableBalance = 0;
             
             // Process allocations in order
             sortedAllocations.forEach(allocation => {
                 if (allocation.type === 'reversal') {
-                    // For reversals, subtract from both total and current
-                    totalAllocated -= allocation.amount;
-                    currentBalance -= allocation.amount;
+                    // For reversals, only subtract from available balance
+                    availableBalance -= allocation.amount;
                 } else {
-                    // For new allocations, add to both total and current
-                    totalAllocated += allocation.amount;
-                    currentBalance += allocation.amount;
+                    // For new allocations, add to both total and available
+                    totalBudget += allocation.amount;
+                    availableBalance += allocation.amount;
                 }
             });
 
@@ -237,11 +236,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const actualSpentBudget = user.usedBudget || 0;
             const returnedAmount = user.returnedBudget || 0;
             
-            // Calculate remaining balance
-            const remainingBalance = currentBalance - actualSpentBudget - returnedAmount;
+            // Subtract returns from available balance
+            availableBalance -= returnedAmount;
             
-            // Calculate usage percentage based on spent vs current balance
-            const usagePercent = currentBalance > 0 ? (actualSpentBudget / currentBalance) * 100 : 0;
+            // Calculate remaining balance
+            const remainingBalance = availableBalance - actualSpentBudget;
+            
+            // Calculate usage percentage based on spent vs total budget
+            const usagePercent = totalBudget > 0 ? (actualSpentBudget / totalBudget) * 100 : 0;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -249,12 +251,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="grid grid-cols-2 gap-4 flex-1">
                         <div>
                             <p class="font-medium text-gray-800">${user.email}</p>
-                            <p class="text-sm text-gray-600">Current Balance: ${formatCurrency(currentBalance)}</p>
+                            <p class="text-sm text-gray-600">Total Budget: ${formatCurrency(totalBudget)}</p>
                             <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
                         </div>
                         <div>
                             <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedAmount)}</p>
-                            <p class="text-sm font-medium text-blue-600">Remaining: ${formatCurrency(remainingBalance)}</p>
+                            <p class="text-sm font-medium text-blue-600">Available: ${formatCurrency(availableBalance)}</p>
                             <p class="text-sm font-medium ${statusColor}">Usage: ${Math.round(usagePercent)}%</p>
                         </div>
                     </div>

@@ -223,39 +223,42 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Get total allocated and used budget
-        const totalAllocated = userData.allocatedBudget || 0;
-        const usedBudget = userData.usedBudget || 0;
-        const availableBalance = userData.availableBalance || totalAllocated;
-        
-        // Calculate remaining balance after purchases (not including returns)
-        const remainingAfterPurchases = availableBalance - usedBudget;
-        const potentialRemaining = remainingAfterPurchases - cartTotal;
-        
-        // Calculate effective total budget (what's actually available to spend)
-        const effectiveTotalBudget = usedBudget + Math.max(0, availableBalance - usedBudget);
-        
-        // Calculate usage percentage based on actual spending against effective total
-        const usagePercent = effectiveTotalBudget > 0 ? (usedBudget / effectiveTotalBudget) * 100 : 0;
+        // Display total budget (all allocations excluding reversals)
+        allocatedAmount.textContent = formatCurrency(userData.totalBudget || 0);
 
-        // Update UI elements
-        allocatedAmount.textContent = formatCurrency(effectiveTotalBudget);
-        remainingAmount.textContent = formatCurrency(potentialRemaining);
-        spentAmount.textContent = formatCurrency(usedBudget);
-        usagePercentage.textContent = Math.round(usagePercent) + '%';
+        // Display spent amount
+        const spent = userData.usedBudget || 0;
+        spentAmount.textContent = formatCurrency(spent);
 
-        // Update usage bar color based on percentage
-        usageBar.style.width = Math.min(usagePercent, 100) + '%';
+        // Display remaining amount (available balance minus cart total)
+        const remaining = (userData.availableBalance || 0) - cartTotal;
+        remainingAmount.textContent = formatCurrency(Math.max(0, remaining));
+
+        // Update usage percentage based on spent vs total budget
+        const usagePercent = userData.totalBudget ? (spent / userData.totalBudget) * 100 : 0;
+        usagePercentage.textContent = `${Math.round(usagePercent)}%`;
+        usageBar.style.width = `${Math.min(100, usagePercent)}%`;
         
+        // Update color based on usage
         if (usagePercent >= 90) {
-            usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-red-600';
-        } else if (usagePercent >= 80) {
-            usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-yellow-600';
+            usageBar.classList.remove('bg-blue-500', 'bg-yellow-500');
+            usageBar.classList.add('bg-red-500');
+        } else if (usagePercent >= 75) {
+            usageBar.classList.remove('bg-blue-500', 'bg-red-500');
+            usageBar.classList.add('bg-yellow-500');
         } else {
-            usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-green-600';
+            usageBar.classList.remove('bg-yellow-500', 'bg-red-500');
+            usageBar.classList.add('bg-blue-500');
+        }
+
+        // Update return section if it exists
+        const returnAvailableAmount = document.getElementById('returnAvailableAmount');
+        const totalReturnedAmount = document.getElementById('totalReturnedAmount');
+        if (returnAvailableAmount) {
+            returnAvailableAmount.textContent = formatCurrency(Math.max(0, userData.availableBalance || 0));
+        }
+        if (totalReturnedAmount) {
+            totalReturnedAmount.textContent = formatCurrency(userData.totalReturned || 0);
         }
     }
 
@@ -491,38 +494,51 @@ document.addEventListener('DOMContentLoaded', function() {
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Calculate total allocated budget (considering both allocations and reversals)
-                let totalAllocated = 0;
-                let availableBalance = 0;
-                
-                // Sort allocations by timestamp to process them in chronological order
+                // Sort allocations by timestamp
                 const sortedAllocations = Object.values(allocations)
                     .sort((a, b) => a.timestamp - b.timestamp);
+                
+                // Calculate total budget (sum of all allocations, excluding reversals)
+                let totalBudget = 0;
+                let availableBalance = 0;
                 
                 // Process allocations in order
                 sortedAllocations.forEach(allocation => {
                     if (allocation.type === 'reversal') {
-                        // For reversals, subtract from both total and available
-                        totalAllocated -= allocation.amount;
+                        // For reversals, only subtract from available balance
                         availableBalance -= allocation.amount;
                     } else {
                         // For new allocations, add to both total and available
-                        totalAllocated += allocation.amount;
+                        totalBudget += allocation.amount;
                         availableBalance += allocation.amount;
                     }
                 });
 
+                // Get returns data
+                const returnsSnapshot = await database.ref(`balance_returns/${uid}`).once('value');
+                const returns = returnsSnapshot.val() || {};
+                
+                // Calculate total returned amount
+                const totalReturned = Object.values(returns).reduce((sum, ret) => {
+                    return sum + (ret.status === 'completed' ? ret.amount : 0);
+                }, 0);
+
+                // Subtract returns from available balance
+                availableBalance -= totalReturned;
+
                 // Update user data in memory and database
                 userData = {
                     ...userData,
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
+                    totalBudget: totalBudget, // Total budget received (excluding reversals)
+                    availableBalance: availableBalance, // Available balance after reversals and returns
+                    totalReturned: totalReturned // Total amount returned
                 };
 
                 // Update the database with new values
                 await database.ref(`users/${uid}`).update({
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
+                    totalBudget: totalBudget,
+                    availableBalance: availableBalance,
+                    totalReturned: totalReturned
                 });
 
                 // Update budget display
@@ -530,6 +546,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Generate and display budget history
                 generateBudgetHistory(allocations);
+                
+                // Update return history display
+                updateReturnHistory(returns);
             });
 
         } catch (error) {
