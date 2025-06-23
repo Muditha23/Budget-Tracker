@@ -448,50 +448,40 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize budget info
     async function initializeBudgetInfo() {
         try {
-            const uid = firebase.auth().currentUser.uid;
-            
-            // Get initial user data
-            const userSnapshot = await database.ref(`users/${uid}`).once('value');
+            const user = await getCurrentUser();
+            if (!user) return;
+
+            // Get user data including budget info
+            const userRef = database.ref(`users/${user.uid}`);
+            const userSnapshot = await userRef.once('value');
             userData = userSnapshot.val();
 
             if (!userData) {
-                showMessage('Error: User data not found', 'error');
+                showMessage('Error loading user data', 'error');
                 return;
             }
 
-            // Set up real-time listener for budget allocations
-            database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
-                const allocations = allocationsSnapshot.val() || {};
-                
-                // Calculate total allocated budget (original amount given by admin)
-                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
-                }, 0);
-
-                // Calculate available balance (allocated minus returns)
-                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
-                }, 0);
-
-                // Update user data in memory and database
-                userData = {
-                    ...userData,
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
-                };
-
-                // Update the database with new values
-                await database.ref(`users/${uid}`).update({
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
-                });
-
-                // Update budget display
+            // Set up real-time listener for budget updates
+            userRef.on('value', (snapshot) => {
+                userData = snapshot.val();
                 updateBudgetDisplay();
                 
-                // Generate and display budget history
-                generateBudgetHistory(allocations);
+                // Load budget history
+                const allocationsRef = database.ref(`budget_allocations/${user.uid}`);
+                allocationsRef.once('value').then(snapshot => {
+                    const allocations = snapshot.val() || {};
+                    generateBudgetHistory(allocations);
+                });
             });
+
+            // Initial budget display update
+            updateBudgetDisplay();
+            
+            // Load budget history
+            const allocationsRef = database.ref(`budget_allocations/${user.uid}`);
+            const allocationsSnapshot = await allocationsRef.once('value');
+            const allocations = allocationsSnapshot.val() || {};
+            generateBudgetHistory(allocations);
 
         } catch (error) {
             console.error('Error initializing budget info:', error);
@@ -500,40 +490,87 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function generateBudgetHistory(allocations) {
+        const historyContainer = document.getElementById('budgetHistory');
+        if (!historyContainer) return;
+
         if (!allocations || Object.keys(allocations).length === 0) {
-            return '<p class="text-gray-500">No budget allocation history</p>';
+            historyContainer.innerHTML = '<p class="text-gray-500 text-center py-4">No budget history available</p>';
+            return;
         }
 
-        const historyArray = Object.entries(allocations)
+        const historyItems = Object.entries(allocations)
             .map(([id, allocation]) => ({
+                id,
                 ...allocation,
-                id
+                timestamp: allocation.timestamp || 0
             }))
             .sort((a, b) => b.timestamp - a.timestamp);
 
-        return `
-            <div class="bg-white rounded-lg shadow p-4">
-                <h3 class="text-lg font-semibold mb-4">Budget Allocation History</h3>
-                <div class="space-y-3">
-                    ${historyArray.map(allocation => `
-                        <div class="border-b border-gray-200 pb-2 last:border-0">
-                            <div class="flex justify-between items-center">
-                                <span class="font-medium ${allocation.type === 'reversal' ? 'text-red-600' : 'text-green-600'}">
-                                    ${allocation.type === 'reversal' ? '-' : '+'}${formatCurrency(allocation.amount)}
-                                </span>
-                                <span class="text-gray-500 text-sm">${formatDate(allocation.timestamp)}</span>
-                            </div>
-                            <p class="text-gray-600 text-sm">
-                                ${allocation.type === 'reversal' 
-                                    ? `Reversed by: ${allocation.adminEmail}`
-                                    : `Allocated by: ${allocation.adminEmail}`}
-                            </p>
-                            ${allocation.notes ? `<p class="text-gray-500 text-xs italic">${allocation.notes}</p>` : ''}
-                        </div>
-                    `).join('')}
+        const historyHTML = historyItems.map(item => {
+            let amountClass = 'text-green-600';
+            let amountPrefix = '+';
+            let actionText = 'Allocated';
+            
+            if (item.type === 'reversal') {
+                amountClass = 'text-red-600';
+                amountPrefix = '-';
+                actionText = 'Reversed';
+            } else if (item.type === 'return') {
+                amountClass = 'text-orange-600';
+                amountPrefix = '-';
+                actionText = 'Returned';
+            }
+
+            return `
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg mb-2">
+                    <div class="flex-1">
+                        <p class="font-medium text-gray-800">${actionText} by ${item.adminEmail}</p>
+                        <p class="text-sm text-gray-600">${formatDate(item.timestamp)}</p>
+                        <p class="text-sm text-gray-600">${item.description || ''}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-semibold ${amountClass}">${amountPrefix}${formatCurrency(item.amount)}</p>
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
+        }).join('');
+
+        historyContainer.innerHTML = historyHTML;
+    }
+
+    async function returnBudget(amount, description = '') {
+        try {
+            const user = await getCurrentUser();
+            if (!user) throw new Error('User not authenticated');
+
+            // Check if amount is valid
+            if (!amount || amount <= 0) {
+                throw new Error('Invalid return amount');
+            }
+
+            // Check if user has enough available balance
+            if (!userData || userData.availableBalance < amount) {
+                throw new Error('Insufficient available balance for return');
+            }
+
+            // Create return request
+            const returnRef = database.ref(`budget_returns/${user.uid}`).push();
+            await returnRef.set({
+                amount: amount,
+                timestamp: Date.now(),
+                status: 'pending',
+                description: description || 'Budget return request',
+                userEmail: user.email
+            });
+
+            showMessage('Return request submitted successfully');
+            
+            // Refresh budget display
+            await initializeBudgetInfo();
+        } catch (error) {
+            console.error('Error submitting return request:', error);
+            showMessage(error.message, 'error');
+        }
     }
 
     // Call initializeBudgetInfo after authentication
