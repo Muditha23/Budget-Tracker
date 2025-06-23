@@ -198,70 +198,44 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Ensure all budget values are numbers
-        const totalAllocated = Number(userData.allocatedBudget) || 0;
-        const usedBudget = Number(userData.usedBudget) || 0;
-        const returnedBudget = Number(userData.returnedBudget) || 0;
-        const availableBalance = Number(userData.availableBalance) || 0;
+        // Get total allocated and used budget
+        const totalAllocated = userData.allocatedBudget || 0;
+        const usedBudget = userData.usedBudget || 0;
+        const availableBalance = userData.availableBalance || totalAllocated;
         
-        // Calculate remaining balance
-        const remainingBalance = availableBalance - cartTotal;
+        // Calculate remaining balance after purchases (not including returns)
+        const remainingAfterPurchases = availableBalance - usedBudget;
+        const potentialRemaining = remainingAfterPurchases - cartTotal;
         
         // Calculate usage percentage based on actual spending against total allocated
-        const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
-        const usagePercent = (usedBudget / effectiveAllocated) * 100;
+        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
 
-        // Force update all budget display elements
-        const budgetOverview = document.getElementById('budgetOverview');
-        if (budgetOverview) {
-            budgetOverview.innerHTML = `
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="text-center p-4 bg-blue-50 rounded-lg">
-                        <p class="text-sm text-gray-600">Total Allocated</p>
-                        <p id="allocatedAmount" class="text-xl font-bold text-blue-600">${formatCurrency(totalAllocated)}</p>
-                    </div>
-                    <div class="text-center p-4 bg-orange-50 rounded-lg">
-                        <p class="text-sm text-gray-600">Spent on Purchases</p>
-                        <p id="spentAmount" class="text-xl font-bold text-orange-600">${formatCurrency(usedBudget)}</p>
-                    </div>
-                    <div class="text-center p-4 bg-green-50 rounded-lg">
-                        <p class="text-sm text-gray-600">Available for Spending</p>
-                        <p id="remainingAmount" class="text-xl font-bold text-green-600">${formatCurrency(availableBalance)}</p>
-                    </div>
-                </div>
-                <div class="mt-4">
-                    <p class="text-sm text-gray-600 mb-2">Purchase Usage</p>
-                    <div class="bg-gray-200 h-2 rounded-full">
-                        <div id="usageBar" class="h-2 rounded-full transition-all duration-300 ${
-                            usagePercent >= 90 ? 'bg-red-500' :
-                            usagePercent >= 80 ? 'bg-yellow-500' :
-                            'bg-green-500'
-                        }" style="width: ${usagePercent}%"></div>
-                    </div>
-                    <p id="usagePercentage" class="text-right text-sm text-gray-600 mt-1">${Math.round(usagePercent)}%</p>
-                </div>
-            `;
+        // Update UI elements
+        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        remainingAmount.textContent = formatCurrency(potentialRemaining);
+        spentAmount.textContent = formatCurrency(usedBudget);
+        usagePercentage.textContent = Math.round(usagePercent) + '%';
+
+        // Update usage bar color based on percentage
+        usageBar.style.width = Math.min(usagePercent, 100) + '%';
+        
+        if (usagePercent >= 90) {
+            usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-red-600';
+        } else if (usagePercent >= 80) {
+            usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-yellow-600';
         } else {
-            // Update individual elements if they exist
-            if (allocatedAmount) allocatedAmount.textContent = formatCurrency(totalAllocated);
-            if (remainingAmount) remainingAmount.textContent = formatCurrency(remainingBalance);
-            if (spentAmount) spentAmount.textContent = formatCurrency(usedBudget);
-            if (usagePercentage) usagePercentage.textContent = Math.round(usagePercent) + '%';
-            if (usageBar) {
-                usageBar.style.width = Math.min(usagePercent, 100) + '%';
-                usageBar.className = `h-2 rounded-full transition-all duration-300 ${
-                    usagePercent >= 90 ? 'bg-red-500' :
-                    usagePercent >= 80 ? 'bg-yellow-500' :
-                    'bg-green-500'
-                }`;
-            }
+            usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-green-600';
         }
     }
 
     function updateSubmitButton() {
         const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const availableBalance = userData?.availableBalance || 0;
-        const canSubmit = cart.length > 0 && userData && (total <= availableBalance);
+        const totalAllocated = userData?.allocatedBudget || 0;
+        const usedBudget = userData?.usedBudget || 0;
+        const canSubmit = cart.length > 0 && userData && (usedBudget + total <= totalAllocated);
 
         if (canSubmit) {
             submitPurchase.disabled = false;
@@ -274,7 +248,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitPurchase.textContent = 'Add items to cart';
             } else {
                 submitPurchase.className = 'w-full bg-red-400 text-white py-4 px-4 rounded-lg font-medium text-lg disabled:cursor-not-allowed';
-                submitPurchase.textContent = `Insufficient funds (${formatCurrency(total)})`;
+                submitPurchase.textContent = 'Insufficient Budget';
             }
         }
     }
@@ -476,44 +450,47 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const uid = firebase.auth().currentUser.uid;
             
-            // Set up real-time listener for user data changes
-            database.ref(`users/${uid}`).on('value', (snapshot) => {
-                userData = snapshot.val();
-                if (userData) {
-                    // Ensure budget values are numbers or default to 0
-                    userData.allocatedBudget = Number(userData.allocatedBudget) || 0;
-                    userData.availableBalance = Number(userData.availableBalance) || 0;
-                    userData.usedBudget = Number(userData.usedBudget) || 0;
-                    userData.returnedBudget = Number(userData.returnedBudget) || 0;
-                    
-                    updateBudgetDisplay();
-                }
-            });
+            // Get initial user data
+            const userSnapshot = await database.ref(`users/${uid}`).once('value');
+            userData = userSnapshot.val();
+
+            if (!userData) {
+                showMessage('Error: User data not found', 'error');
+                return;
+            }
 
             // Set up real-time listener for budget allocations
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Get the latest user data
-                const latestUserData = (await database.ref(`users/${uid}`).once('value')).val();
-                
-                if (latestUserData) {
-                    // Update user data in memory
-                    userData = {
-                        ...latestUserData,
-                        // Ensure budget values are numbers
-                        allocatedBudget: Number(latestUserData.allocatedBudget) || 0,
-                        availableBalance: Number(latestUserData.availableBalance) || 0,
-                        usedBudget: Number(latestUserData.usedBudget) || 0,
-                        returnedBudget: Number(latestUserData.returnedBudget) || 0
-                    };
+                // Calculate total allocated budget (original amount given by admin)
+                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
+                }, 0);
 
-                    // Generate and display budget history
-                    generateBudgetHistory(allocations);
-                    
-                    // Force update the display
-                    updateBudgetDisplay();
-                }
+                // Calculate available balance (allocated minus returns)
+                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                }, 0);
+
+                // Update user data in memory and database
+                userData = {
+                    ...userData,
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                };
+
+                // Update the database with new values
+                await database.ref(`users/${uid}`).update({
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                });
+
+                // Update budget display
+                updateBudgetDisplay();
+                
+                // Generate and display budget history
+                generateBudgetHistory(allocations);
             });
 
         } catch (error) {
@@ -942,74 +919,5 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('[data-section="return"]').addEventListener('click', () => {
         initializeReturnSection();
     });
-
-    // Add function to handle budget returns
-    async function returnBudget(amount, description = '') {
-        try {
-            const timestamp = Date.now();
-            const user = auth.currentUser;
-
-            // Validate return amount
-            if (amount <= 0) {
-                throw new Error('Return amount must be greater than 0');
-            }
-
-            const currentAllocated = userData.allocatedBudget || 0;
-            if (amount > currentAllocated) {
-                throw new Error('Cannot return more than allocated budget');
-            }
-
-            // Create return record
-            const returnRecord = {
-                amount: parseFloat(amount),
-                timestamp: timestamp,
-                type: 'return',
-                description: description || 'Budget return',
-                subAdminUid: user.uid,
-                subAdminEmail: user.email
-            };
-
-            // Update database
-            await database.ref().transaction((data) => {
-                if (data === null) return data;
-
-                // Add return record
-                if (!data.budget_allocations) {
-                    data.budget_allocations = {};
-                }
-                if (!data.budget_allocations[user.uid]) {
-                    data.budget_allocations[user.uid] = {};
-                }
-                const returnId = `return_${timestamp}`;
-                data.budget_allocations[user.uid][returnId] = returnRecord;
-
-                // Update user's budget tracking
-                // Set allocatedBudget to 0 if returning full amount, otherwise subtract the returned amount
-                const currentAllocated = data.users[user.uid].allocatedBudget || 0;
-                if (amount >= currentAllocated) {
-                    data.users[user.uid].allocatedBudget = 0;
-                    data.users[user.uid].availableBalance = 0;
-                } else {
-                    data.users[user.uid].allocatedBudget = currentAllocated - parseFloat(amount);
-                    data.users[user.uid].availableBalance = (data.users[user.uid].availableBalance || 0) - parseFloat(amount);
-                }
-
-                // Update returned budget tracking
-                if (!data.users[user.uid].returnedBudget) {
-                    data.users[user.uid].returnedBudget = 0;
-                }
-                data.users[user.uid].returnedBudget += parseFloat(amount);
-
-                return data;
-            });
-
-            // Refresh user data
-            await initializeBudgetInfo();
-            showMessage('Budget return processed successfully');
-        } catch (error) {
-            console.error('Error processing budget return:', error);
-            showMessage(error.message || 'Error processing budget return', 'error');
-        }
-    }
 });
 

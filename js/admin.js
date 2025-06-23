@@ -203,64 +203,35 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const statusHTML = subAdminArray.map(([uid, user]) => {
-            // Get fresh data from the user object
-            const totalAllocated = user.allocatedBudget || 0;
-            const returnedBudget = user.returnedBudget || 0;
-            const usedBudget = user.usedBudget || 0;
-            const availableBalance = user.availableBalance || 0;
-            
-            // Calculate usage percentage
-            const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
-            const usagePercent = (usedBudget / effectiveAllocated) * 100;
-            const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
-            
-            // Get recent transactions
             const userAllocations = allocations[uid] || {};
-            const recentTransactions = Object.entries(userAllocations)
-                .sort(([, a], [, b]) => b.timestamp - a.timestamp)
-                .slice(0, 3)
-                .map(([, transaction]) => {
-                    const type = transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1);
-                    return `
-                        <div class="text-xs text-gray-500">
-                            ${type}: ${formatCurrency(transaction.amount)} 
-                            (${new Date(transaction.timestamp).toLocaleDateString()})
-                        </div>
-                    `;
-                }).join('');
+            const totalAllocated = Object.values(userAllocations).reduce((sum, allocation) => {
+                if (allocation.type === 'reversal') {
+                    return sum - allocation.amount;
+                }
+                return sum + allocation.amount;
+            }, 0);
+
+            // Calculate actual used budget by considering returns
+            const actualUsedBudget = (user.usedBudget || 0) - (user.returnedBudget || 0);
             
-            // Format the budget values
-            const formattedTotal = formatCurrency(totalAllocated);
-            const formattedUsed = formatCurrency(usedBudget);
-            const formattedReturned = formatCurrency(returnedBudget);
-            const formattedAvailable = formatCurrency(availableBalance);
+            // Calculate usage percentage based on actual used budget
+            const usagePercent = ((actualUsedBudget) / (totalAllocated || 1)) * 100;
+            const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
                 <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
                         <p class="font-medium text-gray-800">${user.email}</p>
-                        <p class="text-sm text-gray-600">Total Allocated: ${formattedTotal}</p>
-                        <p class="text-sm text-gray-600">Used: ${formattedUsed}</p>
-                        <p class="text-sm text-gray-600">Returned: ${formattedReturned}</p>
-                        <p class="text-sm text-gray-600">Available: ${formattedAvailable}</p>
-                        <div class="mt-2 border-t pt-1">
-                            ${recentTransactions}
-                        </div>
+                        <p class="text-sm text-gray-600">Total Budget: ${formatCurrency(totalAllocated)}</p>
+                        <p class="text-sm text-gray-600">Used: ${formatCurrency(actualUsedBudget)}</p>
+                        <p class="text-sm text-gray-600">Returns: ${formatCurrency(user.returnedBudget || 0)}</p>
                     </div>
-                    <div class="text-right">
-                        <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
-                        <p class="text-xs text-gray-500">Usage</p>
-                    </div>
+                    <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
                 </div>
             `;
         }).join('');
 
         subAdminStatus.innerHTML = statusHTML;
-
-        // Force a refresh of the dashboard data after a short delay
-        setTimeout(() => {
-            loadDashboardData();
-        }, 1000);
     }
 
     // Main Account Balance functions
@@ -1200,156 +1171,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return 'Password should be at least 6 characters.';
             default:
                 return errorCode || 'An error occurred. Please try again.';
-        }
-    }
-
-    // Budget allocation functions
-    async function allocateBudgetToSubAdmin(subAdminUid, amount, description = '') {
-        try {
-            const timestamp = Date.now();
-            const adminUser = auth.currentUser;
-
-            // Create batch updates object
-            const updates = {};
-
-            // Update user data
-            updates[`/users/${subAdminUid}/allocatedBudget`] = parseFloat(amount);
-            updates[`/users/${subAdminUid}/availableBalance`] = parseFloat(amount);
-            updates[`/users/${subAdminUid}/usedBudget`] = 0;
-            updates[`/users/${subAdminUid}/returnedBudget`] = 0;
-            updates[`/users/${subAdminUid}/role`] = 'subadmin';
-
-            // Clear existing allocations and add new one
-            const allocationKey = `allocation_${timestamp}`;
-            updates[`/budget_allocations/${subAdminUid}/${allocationKey}`] = {
-                amount: parseFloat(amount),
-                timestamp: timestamp,
-                type: 'allocation',
-                description: description || 'Budget allocation',
-                adminUid: adminUser.uid,
-                adminEmail: adminUser.email
-            };
-
-            // Apply all updates atomically
-            await database.ref().update(updates);
-
-            // Force refresh
-            await loadDashboardData();
-            
-            showMessage('Budget allocated successfully');
-        } catch (error) {
-            console.error('Error allocating budget:', error);
-            showMessage('Error allocating budget', 'error');
-        }
-    }
-
-    async function reverseBudgetFromSubAdmin(subAdminUid, amount, description = '') {
-        try {
-            const timestamp = Date.now();
-            const adminUser = auth.currentUser;
-
-            // Create batch updates object
-            const updates = {};
-
-            // Update user data to zero
-            updates[`/users/${subAdminUid}/allocatedBudget`] = 0;
-            updates[`/users/${subAdminUid}/availableBalance`] = 0;
-            updates[`/users/${subAdminUid}/usedBudget`] = 0;
-            updates[`/users/${subAdminUid}/returnedBudget`] = 0;
-            updates[`/users/${subAdminUid}/role`] = 'subadmin';
-
-            // Add reversal record
-            const reversalKey = `reversal_${timestamp}`;
-            updates[`/budget_allocations/${subAdminUid}/${reversalKey}`] = {
-                amount: parseFloat(amount),
-                timestamp: timestamp,
-                type: 'reversal',
-                description: description || 'Budget reversal',
-                adminUid: adminUser.uid,
-                adminEmail: adminUser.email
-            };
-
-            // Apply all updates atomically
-            await database.ref().update(updates);
-
-            // Force refresh
-            await loadDashboardData();
-
-            showMessage('Budget reversed successfully');
-        } catch (error) {
-            console.error('Error reversing budget:', error);
-            showMessage(error.message || 'Error reversing budget', 'error');
-        }
-    }
-
-    async function handleBudgetReturn(subAdminUid, amount, description = '') {
-        try {
-            const timestamp = Date.now();
-            const adminUser = auth.currentUser;
-
-            // Get current user data
-            const userSnapshot = await database.ref(`users/${subAdminUid}`).once('value');
-            const userData = userSnapshot.val();
-
-            // Validate return amount
-            if (amount <= 0) {
-                throw new Error('Return amount must be greater than 0');
-            }
-
-            const currentAllocated = userData.allocatedBudget || 0;
-            if (amount > currentAllocated) {
-                throw new Error('Cannot return more than allocated budget');
-            }
-
-            // Create return record
-            const returnRecord = {
-                amount: parseFloat(amount),
-                timestamp: timestamp,
-                type: 'return',
-                description: description || 'Budget return',
-                adminUid: adminUser.uid,
-                adminEmail: adminUser.email
-            };
-
-            // Update database
-            await database.ref().transaction((data) => {
-                if (data === null) return data;
-
-                // Add return record
-                if (!data.budget_allocations) {
-                    data.budget_allocations = {};
-                }
-                if (!data.budget_allocations[subAdminUid]) {
-                    data.budget_allocations[subAdminUid] = {};
-                }
-                const returnId = `return_${timestamp}`;
-                data.budget_allocations[subAdminUid][returnId] = returnRecord;
-
-                // Update user's budget tracking
-                // Set allocatedBudget to 0 if returning full amount, otherwise subtract the returned amount
-                const currentAllocated = data.users[subAdminUid].allocatedBudget || 0;
-                if (amount >= currentAllocated) {
-                    data.users[subAdminUid].allocatedBudget = 0;
-                    data.users[subAdminUid].availableBalance = 0;
-                } else {
-                    data.users[subAdminUid].allocatedBudget = currentAllocated - parseFloat(amount);
-                    data.users[subAdminUid].availableBalance = (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount);
-                }
-
-                // Update returned budget tracking
-                if (!data.users[subAdminUid].returnedBudget) {
-                    data.users[subAdminUid].returnedBudget = 0;
-                }
-                data.users[subAdminUid].returnedBudget += parseFloat(amount);
-
-                return data;
-            });
-
-            await loadDashboardData();
-            showMessage('Budget return processed successfully');
-        } catch (error) {
-            console.error('Error processing budget return:', error);
-            showMessage(error.message || 'Error processing budget return', 'error');
         }
     }
 });
