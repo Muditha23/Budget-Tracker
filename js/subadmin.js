@@ -922,5 +922,69 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('[data-section="return"]').addEventListener('click', () => {
         initializeReturnSection();
     });
+
+    // Add return balance button to the UI
+    const returnBalanceBtn = document.createElement('button');
+    returnBalanceBtn.id = 'returnBalanceBtn';
+    returnBalanceBtn.className = 'w-full bg-green-600 text-white py-4 px-4 rounded-lg font-medium text-lg hover:bg-green-700 transition-colors mt-4';
+    returnBalanceBtn.textContent = 'Return Remaining Balance';
+    submitPurchase.parentNode.appendChild(returnBalanceBtn);
+
+    // Return balance functionality
+    returnBalanceBtn.addEventListener('click', async function() {
+        try {
+            if (!userData) {
+                showMessage('User data not available', 'error');
+                return;
+            }
+
+            const totalAllocated = userData.allocatedBudget || 0;
+            const usedBudget = userData.usedBudget || 0;
+            const remainingBalance = totalAllocated - usedBudget;
+
+            if (remainingBalance <= 0) {
+                showMessage('No balance to return', 'error');
+                return;
+            }
+
+            // Create a return record
+            const returnRef = database.ref(`budget_returns/${userData.uid}`).push();
+            const returnData = {
+                amount: remainingBalance,
+                timestamp: Date.now(),
+                usedAmount: usedBudget,
+                originalAllocation: totalAllocated
+            };
+
+            // Update user's allocated budget and used budget
+            const updates = {
+                [`users/${userData.uid}/allocatedBudget`]: 0,
+                [`users/${userData.uid}/usedBudget`]: 0,
+                [`budget_returns/${userData.uid}/${returnRef.key}`]: returnData
+            };
+
+            // Create a reversal allocation record
+            const allocationRef = database.ref(`budget_allocations/${userData.uid}`).push();
+            updates[`budget_allocations/${userData.uid}/${allocationRef.key}`] = {
+                amount: remainingBalance,
+                timestamp: Date.now(),
+                type: 'reversal',
+                reason: 'Balance return'
+            };
+
+            await database.ref().update(updates);
+
+            showMessage(`Successfully returned ${formatCurrency(remainingBalance)}`, 'success');
+            
+            // Refresh the budget display
+            await initializeBudgetInfo();
+            updateCartDisplay();
+            updateSubmitButton();
+
+        } catch (error) {
+            console.error('Error returning balance:', error);
+            showMessage('Failed to return balance', 'error');
+        }
+    });
 });
 

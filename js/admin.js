@@ -116,9 +116,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const usersSnapshot = await database.ref('users').orderByChild('role').equalTo('subadmin').once('value');
             dashboardData.subAdmins = usersSnapshot.val() || {};
 
-            // Load all allocations
-            const allocationsSnapshot = await database.ref('budget_allocations').once('value');
+            // Load all allocations and returns
+            const [allocationsSnapshot, returnsSnapshot] = await Promise.all([
+                database.ref('budget_allocations').once('value'),
+                database.ref('budget_returns').once('value')
+            ]);
+            
             const allocations = allocationsSnapshot.val() || {};
+            const returns = returnsSnapshot.val() || {};
 
             // Calculate totals from allocations
             let totalAllocated = 0;
@@ -142,8 +147,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Load recent purchases
             await loadRecentPurchases();
             
-            // Update sub admin status with allocation data
-            updateSubAdminStatusWithAllocations(allocations);
+            // Update sub admin status with allocation and return data
+            updateSubAdminStatusWithAllocations(allocations, returns);
 
         } catch (error) {
             console.error('Error loading dashboard data:', error);
@@ -194,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updateSubAdminStatusWithAllocations(allocations) {
+    function updateSubAdminStatusWithAllocations(allocations, returns) {
         const subAdminArray = Object.entries(dashboardData.subAdmins);
         
         if (subAdminArray.length === 0) {
@@ -204,21 +209,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const statusHTML = subAdminArray.map(([uid, user]) => {
             const userAllocations = allocations[uid] || {};
+            const userReturns = returns[uid] || {};
+            
+            // Calculate total allocated and returned
             const totalAllocated = Object.values(userAllocations).reduce((sum, allocation) => {
                 if (allocation.type === 'reversal') {
                     return sum - allocation.amount;
                 }
                 return sum + allocation.amount;
             }, 0);
+
+            // Get the latest return if any
+            const latestReturn = Object.values(userReturns)
+                .sort((a, b) => b.timestamp - a.timestamp)[0];
+
             const usagePercent = ((user.usedBudget || 0) / (totalAllocated || 1)) * 100;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
+            const returnInfo = latestReturn ? `
+                <div class="mt-1">
+                    <p class="text-sm text-gray-600">Last Return: ${formatCurrency(latestReturn.amount)}</p>
+                    <p class="text-xs text-gray-500">Used: ${formatCurrency(latestReturn.usedAmount)}</p>
+                </div>
+            ` : '';
+            
             return `
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                <div class="flex justify-between items-start p-3 bg-gray-50 rounded-lg">
                     <div>
                         <p class="font-medium text-gray-800">${user.email}</p>
                         <p class="text-sm text-gray-600">Total Budget: ${formatCurrency(totalAllocated)}</p>
                         <p class="text-sm text-gray-600">Used: ${formatCurrency(user.usedBudget || 0)}</p>
+                        ${returnInfo}
                     </div>
                     <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
                 </div>
