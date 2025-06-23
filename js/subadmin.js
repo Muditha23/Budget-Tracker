@@ -202,8 +202,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
         const availableBalance = userData.availableBalance || totalAllocated;
-        const potentialUsed = usedBudget + cartTotal;
-        const potentialRemaining = availableBalance - cartTotal;
+        
+        // Calculate remaining balance after purchases (not including returns)
+        const remainingAfterPurchases = availableBalance - usedBudget;
+        const potentialRemaining = remainingAfterPurchases - cartTotal;
         
         // Calculate usage percentage based on actual spending against total allocated
         const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
