@@ -198,9 +198,10 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Get available balance and used budget
-        const availableBalance = userData.availableBalance || 0;
+        // Get total allocated and used budget
+        const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
+        const availableBalance = userData.availableBalance || totalAllocated;
         
         // Calculate remaining balance after purchases (not including returns)
         const remainingAfterPurchases = availableBalance - usedBudget;
