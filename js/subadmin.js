@@ -201,9 +201,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get total allocated and used budget
         const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
-        const remaining = totalAllocated - usedBudget;
+        const availableBalance = userData.availableBalance || totalAllocated;
         const potentialUsed = usedBudget + cartTotal;
-        const potentialRemaining = totalAllocated - potentialUsed;
+        const potentialRemaining = availableBalance - cartTotal;
         
         // Calculate usage percentage based on actual spending against total allocated
         const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
@@ -448,60 +448,47 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const uid = firebase.auth().currentUser.uid;
             
+            // Get initial user data
+            const userSnapshot = await database.ref(`users/${uid}`).once('value');
+            userData = userSnapshot.val();
+
+            if (!userData) {
+                showMessage('Error: User data not found', 'error');
+                return;
+            }
+
             // Set up real-time listener for budget allocations
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Calculate total allocated budget from all allocations
+                // Calculate total allocated budget (original amount given by admin)
                 const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
-                    if (allocation.type === 'reversal') {
-                        return sum - allocation.amount;
-                    }
-                    return sum + allocation.amount;
+                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
                 }, 0);
-                
-                // Get user data with used budget
-                const userSnapshot = await database.ref(`users/${uid}`).once('value');
-                userData = userSnapshot.val() || {};
-                userData.allocatedBudget = totalAllocated;
+
+                // Calculate available balance (allocated minus returns)
+                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                }, 0);
+
+                // Update user data in memory and database
+                userData = {
+                    ...userData,
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                };
+
+                // Update the database with new values
+                await database.ref(`users/${uid}`).update({
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                });
 
                 // Update budget display
                 updateBudgetDisplay();
-                updateSubmitButton();
-
-                // Update budget history if container exists
-                const budgetHistoryContainer = document.getElementById('budgetHistory');
-                if (budgetHistoryContainer) {
-                    budgetHistoryContainer.innerHTML = generateBudgetHistory(allocations);
-                }
-
-                // Update the main budget overview section
-                const totalBudgetElement = document.getElementById('totalBudget');
-                const usedBudgetElement = document.getElementById('usedBudget');
-                const remainingBudgetElement = document.getElementById('remainingBudget');
-
-                if (totalBudgetElement) totalBudgetElement.textContent = formatCurrency(totalAllocated);
-                if (usedBudgetElement) usedBudgetElement.textContent = formatCurrency(userData.usedBudget || 0);
-                if (remainingBudgetElement) remainingBudgetElement.textContent = formatCurrency(totalAllocated - (userData.usedBudget || 0));
-
-                // Update progress bar if it exists
-                const progressBar = document.querySelector('.progress-bar');
-                if (progressBar) {
-                    const percentage = totalAllocated > 0 ? ((userData.usedBudget || 0) / totalAllocated) * 100 : 0;
-                    progressBar.style.width = `${Math.min(percentage, 100)}%`;
-                    
-                    // Update progress bar color based on usage
-                    if (percentage >= 90) {
-                        progressBar.classList.remove('bg-blue-600', 'bg-yellow-500');
-                        progressBar.classList.add('bg-red-600');
-                    } else if (percentage >= 75) {
-                        progressBar.classList.remove('bg-blue-600', 'bg-red-600');
-                        progressBar.classList.add('bg-yellow-500');
-                    } else {
-                        progressBar.classList.remove('bg-yellow-500', 'bg-red-600');
-                        progressBar.classList.add('bg-blue-600');
-                    }
-                }
+                
+                // Generate and display budget history
+                generateBudgetHistory(allocations);
             });
 
         } catch (error) {
@@ -880,16 +867,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 notes: `Balance returned${returnNotes.value.trim() ? ': ' + returnNotes.value.trim() : ''}`
             };
 
-            // Update user's usedBudget to reflect the returned amount
-            const updatedUsedBudget = userData.usedBudget || 0;
-            const newAllocatedBudget = (userData.allocatedBudget || 0) - amount;
+            // Update user's data - keep original allocated budget but update available balance
+            const updatedAvailableBalance = (userData.availableBalance || 0) - amount;
 
             // Perform updates atomically
             await database.ref().update({
                 [`balance_returns/${uid}/${returnRef.key}`]: returnData,
                 [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData,
-                [`users/${uid}/allocatedBudget`]: newAllocatedBudget,
-                [`users/${uid}/usedBudget`]: updatedUsedBudget
+                [`users/${uid}/availableBalance`]: updatedAvailableBalance
             });
 
             // Reset form
