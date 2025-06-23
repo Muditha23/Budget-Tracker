@@ -204,18 +204,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const returnedBudget = userData.returnedBudget || 0;
         const availableBalance = userData.availableBalance || 0;
         
-        // Calculate remaining balance considering returns
-        const effectiveUsedBudget = usedBudget - returnedBudget;
+        // Calculate remaining balance
         const remainingBalance = availableBalance - cartTotal;
         
         // Calculate usage percentage based on actual spending against total allocated
         const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
-        const usagePercent = (effectiveUsedBudget / effectiveAllocated) * 100;
+        const usagePercent = (usedBudget / effectiveAllocated) * 100;
 
         // Update UI elements
         allocatedAmount.textContent = formatCurrency(totalAllocated);
         remainingAmount.textContent = formatCurrency(remainingBalance);
-        spentAmount.textContent = formatCurrency(effectiveUsedBudget);
+        spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
 
         // Update usage bar color based on percentage
@@ -932,9 +931,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error('Return amount must be greater than 0');
             }
 
-            const availableToReturn = (userData.allocatedBudget || 0) - (userData.usedBudget || 0);
-            if (amount > availableToReturn) {
-                throw new Error('Cannot return more than available unused budget');
+            const currentAllocated = userData.allocatedBudget || 0;
+            if (amount > currentAllocated) {
+                throw new Error('Cannot return more than allocated budget');
             }
 
             // Create return record
@@ -962,12 +961,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 data.budget_allocations[user.uid][returnId] = returnRecord;
 
                 // Update user's budget tracking
+                // Set allocatedBudget to 0 if returning full amount, otherwise subtract the returned amount
+                const currentAllocated = data.users[user.uid].allocatedBudget || 0;
+                if (amount >= currentAllocated) {
+                    data.users[user.uid].allocatedBudget = 0;
+                    data.users[user.uid].availableBalance = 0;
+                } else {
+                    data.users[user.uid].allocatedBudget = currentAllocated - parseFloat(amount);
+                    data.users[user.uid].availableBalance = (data.users[user.uid].availableBalance || 0) - parseFloat(amount);
+                }
+
+                // Update returned budget tracking
                 if (!data.users[user.uid].returnedBudget) {
                     data.users[user.uid].returnedBudget = 0;
                 }
                 data.users[user.uid].returnedBudget += parseFloat(amount);
-                data.users[user.uid].allocatedBudget -= parseFloat(amount);
-                data.users[user.uid].availableBalance = (data.users[user.uid].availableBalance || 0) - parseFloat(amount);
 
                 return data;
             });

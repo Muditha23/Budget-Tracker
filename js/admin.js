@@ -206,22 +206,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const userAllocations = allocations[uid] || {};
             
             // Calculate total allocated considering all types of transactions
-            let totalAllocated = 0;
-            Object.values(userAllocations).forEach(allocation => {
-                if (allocation.type === 'allocation') {
-                    totalAllocated += allocation.amount;
-                } else if (allocation.type === 'reversal' || allocation.type === 'return') {
-                    totalAllocated -= allocation.amount;
-                }
-            });
-
-            // Calculate actual used budget
-            const actualUsedBudget = (user.usedBudget || 0);
-            const returnedBudget = (user.returnedBudget || 0);
+            let totalAllocated = user.allocatedBudget || 0; // Use the current allocatedBudget directly
+            const returnedBudget = user.returnedBudget || 0;
+            const usedBudget = user.usedBudget || 0;
             
             // Calculate usage percentage based on actual used budget against total allocated
             const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
-            const usagePercent = ((actualUsedBudget - returnedBudget) / effectiveAllocated) * 100;
+            const usagePercent = (usedBudget / effectiveAllocated) * 100;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -229,9 +220,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div>
                         <p class="font-medium text-gray-800">${user.email}</p>
                         <p class="text-sm text-gray-600">Total Allocated: ${formatCurrency(totalAllocated)}</p>
-                        <p class="text-sm text-gray-600">Used: ${formatCurrency(actualUsedBudget)}</p>
+                        <p class="text-sm text-gray-600">Used: ${formatCurrency(usedBudget)}</p>
                         <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedBudget)}</p>
-                        <p class="text-sm text-gray-600">Available: ${formatCurrency(totalAllocated - actualUsedBudget + returnedBudget)}</p>
+                        <p class="text-sm text-gray-600">Available: ${formatCurrency(totalAllocated - usedBudget)}</p>
                     </div>
                     <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
                 </div>
@@ -1243,9 +1234,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const userData = userSnapshot.val();
             
             // Check if reversal amount is valid
-            const availableToReverse = (userData.allocatedBudget || 0) - (userData.usedBudget || 0);
+            const availableToReverse = userData.allocatedBudget || 0;
             if (amount > availableToReverse) {
-                throw new Error('Cannot reverse more than available unused budget');
+                throw new Error('Cannot reverse more than allocated budget');
             }
 
             // Create reversal record
@@ -1273,8 +1264,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 data.budget_allocations[subAdminUid][reversalId] = reversalRecord;
 
                 // Update user's budget tracking
-                data.users[subAdminUid].allocatedBudget -= parseFloat(amount);
-                data.users[subAdminUid].availableBalance = (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount);
+                // Set allocatedBudget to 0 if reversing full amount, otherwise subtract the reversed amount
+                const currentAllocated = data.users[subAdminUid].allocatedBudget || 0;
+                if (amount >= currentAllocated) {
+                    data.users[subAdminUid].allocatedBudget = 0;
+                    data.users[subAdminUid].availableBalance = 0;
+                } else {
+                    data.users[subAdminUid].allocatedBudget = currentAllocated - parseFloat(amount);
+                    data.users[subAdminUid].availableBalance = (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount);
+                }
 
                 return data;
             });
@@ -1291,6 +1289,20 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const timestamp = Date.now();
             const adminUser = auth.currentUser;
+
+            // Get current user data
+            const userSnapshot = await database.ref(`users/${subAdminUid}`).once('value');
+            const userData = userSnapshot.val();
+
+            // Validate return amount
+            if (amount <= 0) {
+                throw new Error('Return amount must be greater than 0');
+            }
+
+            const currentAllocated = userData.allocatedBudget || 0;
+            if (amount > currentAllocated) {
+                throw new Error('Cannot return more than allocated budget');
+            }
 
             // Create return record
             const returnRecord = {
@@ -1317,12 +1329,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 data.budget_allocations[subAdminUid][returnId] = returnRecord;
 
                 // Update user's budget tracking
+                // Set allocatedBudget to 0 if returning full amount, otherwise subtract the returned amount
+                const currentAllocated = data.users[subAdminUid].allocatedBudget || 0;
+                if (amount >= currentAllocated) {
+                    data.users[subAdminUid].allocatedBudget = 0;
+                    data.users[subAdminUid].availableBalance = 0;
+                } else {
+                    data.users[subAdminUid].allocatedBudget = currentAllocated - parseFloat(amount);
+                    data.users[subAdminUid].availableBalance = (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount);
+                }
+
+                // Update returned budget tracking
                 if (!data.users[subAdminUid].returnedBudget) {
                     data.users[subAdminUid].returnedBudget = 0;
                 }
                 data.users[subAdminUid].returnedBudget += parseFloat(amount);
-                data.users[subAdminUid].allocatedBudget -= parseFloat(amount);
-                data.users[subAdminUid].availableBalance = (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount);
 
                 return data;
             });
@@ -1331,7 +1352,7 @@ document.addEventListener('DOMContentLoaded', function() {
             showMessage('Budget return processed successfully');
         } catch (error) {
             console.error('Error processing budget return:', error);
-            showMessage('Error processing budget return', 'error');
+            showMessage(error.message || 'Error processing budget return', 'error');
         }
     }
 });
