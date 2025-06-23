@@ -876,11 +876,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 notes: `Balance returned${returnNotes.value.trim() ? ': ' + returnNotes.value.trim() : ''}`
             };
 
-            // Perform updates atomically
-            await database.ref().update({
+            // Update user's used budget
+            const userRef = database.ref(`users/${uid}`);
+            const currentUsedBudget = userSnapshot.val().usedBudget || 0;
+            
+            // Perform all updates atomically
+            const updates = {
                 [`balance_returns/${uid}/${returnRef.key}`]: returnData,
-                [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData
-            });
+                [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData,
+                [`users/${uid}/usedBudget`]: currentUsedBudget - amount
+            };
+
+            await database.ref().update(updates);
 
             // Reset form
             returnAmount.value = '';
