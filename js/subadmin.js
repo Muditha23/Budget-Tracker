@@ -223,28 +223,26 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Get the latest values from userData
-        const originalAllocation = userData.originalAllocation || 0;
-        const spentAmount = userData.usedBudget || 0;
-        const returnedAmount = userData.returnedAmount || 0;
-        const reversedAmount = userData.reversedAmount || 0;
-        const currentBalance = userData.currentBalance || 0;
-
-        // Calculate remaining amount (available for spending)
-        const remainingAmount = currentBalance - spentAmount - cartTotal;
+        // Get total allocated and used budget
+        const totalAllocated = userData.allocatedBudget || 0;
+        const usedBudget = userData.usedBudget || 0;
+        const availableBalance = userData.availableBalance || totalAllocated;
         
-        // Calculate usage percentage based on original allocation
-        const usagePercent = originalAllocation > 0 ? ((spentAmount + cartTotal) / originalAllocation) * 100 : 0;
+        // Calculate remaining balance after purchases (not including returns)
+        const remainingAfterPurchases = availableBalance - usedBudget;
+        const potentialRemaining = remainingAfterPurchases - cartTotal;
+        
+        // Calculate usage percentage based on actual spending against total allocated
+        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
 
-        // Update display elements
-        document.getElementById('allocatedAmount').textContent = formatCurrency(originalAllocation);
-        document.getElementById('spentAmount').textContent = formatCurrency(spentAmount + cartTotal);
-        document.getElementById('remainingAmount').textContent = formatCurrency(remainingAmount);
-        document.getElementById('returnedAmount').textContent = formatCurrency(returnedAmount);
-        document.getElementById('reversedAmount').textContent = formatCurrency(reversedAmount);
-        document.getElementById('originalAllocation').textContent = formatCurrency(originalAllocation);
-        document.getElementById('usagePercentage').textContent = `${Math.round(usagePercent)}%`;
-        document.getElementById('usageBar').style.width = `${Math.min(usagePercent, 100)}%`;
+        // Update UI elements
+        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        remainingAmount.textContent = formatCurrency(potentialRemaining);
+        spentAmount.textContent = formatCurrency(usedBudget);
+        usagePercentage.textContent = Math.round(usagePercent) + '%';
+
+        // Update usage bar color based on percentage
+        usageBar.style.width = Math.min(usagePercent, 100) + '%';
         
         if (usagePercent >= 90) {
             usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
@@ -260,7 +258,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateSubmitButton() {
         const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const totalAllocated = userData?.totalAllocated || 0;
+        const totalAllocated = userData?.allocatedBudget || 0;
         const usedBudget = userData?.usedBudget || 0;
         const canSubmit = cart.length > 0 && userData && (usedBudget + total <= totalAllocated);
 
@@ -490,86 +488,34 @@ document.addEventListener('DOMContentLoaded', function() {
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Sort allocations by timestamp to process them in chronological order
-                const sortedAllocations = Object.values(allocations)
-                    .sort((a, b) => a.timestamp - b.timestamp);
-                
-                // Initialize budget tracking variables
-                let totalAllocated = 0;        // Total budget ever allocated (excluding reversals)
-                let currentBalance = 0;        // Current available balance after all transactions
-                let originalAllocation = 0;    // Original allocation amount (latest non-reversal)
-                let returnedAmount = 0;        // Amount voluntarily returned to admin
-                let reversedAmount = 0;        // Amount reversed (taken back) by admin
-                
-                // Process allocations in chronological order
-                sortedAllocations.forEach(allocation => {
-                    if (allocation.type === 'reversal') {
-                        currentBalance -= allocation.amount;
-                        reversedAmount += allocation.amount;
-                    } else {
-                        currentBalance += allocation.amount;
-                        originalAllocation = allocation.amount; // Keep track of latest allocation
-                        totalAllocated += allocation.amount;
-                    }
-                });
+                // Calculate total allocated budget (original amount given by admin)
+                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
+                }, 0);
 
-                // Get spent amount from user data
-                const spentAmount = userData.usedBudget || 0;
-                
-                // Calculate remaining amount (available for spending)
-                const remainingAmount = currentBalance - spentAmount;
-                
-                // Calculate usage percentage based on original allocation
-                const usagePercent = originalAllocation > 0 ? (spentAmount / originalAllocation) * 100 : 0;
+                // Calculate available balance (allocated minus returns)
+                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                }, 0);
 
-                // Update user data in memory
+                // Update user data in memory and database
                 userData = {
                     ...userData,
-                    totalAllocated,
-                    currentBalance,
-                    originalAllocation,
-                    returnedAmount,
-                    reversedAmount
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
                 };
 
                 // Update the database with new values
                 await database.ref(`users/${uid}`).update({
-                    totalAllocated,
-                    currentBalance,
-                    originalAllocation,
-                    returnedAmount,
-                    reversedAmount
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
                 });
 
-                // Update all display elements
-                document.getElementById('allocatedAmount').textContent = formatCurrency(originalAllocation);
-                document.getElementById('spentAmount').textContent = formatCurrency(spentAmount);
-                document.getElementById('remainingAmount').textContent = formatCurrency(remainingAmount);
-                document.getElementById('returnedAmount').textContent = formatCurrency(returnedAmount);
-                document.getElementById('reversedAmount').textContent = formatCurrency(reversedAmount);
-                document.getElementById('originalAllocation').textContent = formatCurrency(originalAllocation);
-                document.getElementById('usagePercentage').textContent = `${Math.round(usagePercent)}%`;
-                document.getElementById('usageBar').style.width = `${Math.min(usagePercent, 100)}%`;
+                // Update budget display
+                updateBudgetDisplay();
                 
                 // Generate and display budget history
                 generateBudgetHistory(allocations);
-            });
-
-            // Set up real-time listener for returns
-            database.ref(`balance_returns/${uid}`).on('value', async (returnsSnapshot) => {
-                const returns = returnsSnapshot.val() || {};
-                
-                // Calculate total returned amount
-                const totalReturned = Object.values(returns).reduce((sum, ret) => sum + ret.amount, 0);
-                
-                // Update returned amount in user data
-                userData.returnedAmount = totalReturned;
-                await database.ref(`users/${uid}`).update({
-                    returnedAmount: totalReturned
-                });
-                
-                // Update display
-                document.getElementById('returnedAmount').textContent = formatCurrency(totalReturned);
             });
 
         } catch (error) {
@@ -949,13 +895,13 @@ document.addEventListener('DOMContentLoaded', function() {
             };
 
             // Update user's data - keep original allocated budget but update available balance
-            const updatedAvailableBalance = (userData.currentBalance || 0) - amount;
+            const updatedAvailableBalance = (userData.availableBalance || 0) - amount;
 
             // Perform updates atomically
             await database.ref().update({
                 [`balance_returns/${uid}/${returnRef.key}`]: returnData,
                 [`budget_allocations/${uid}/${allocationRef.key}`]: allocationData,
-                [`users/${uid}/currentBalance`]: updatedAvailableBalance
+                [`users/${uid}/availableBalance`]: updatedAvailableBalance
             });
 
             // Reset form
