@@ -201,19 +201,21 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get total allocated and used budget
         const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
-        const availableBalance = userData.availableBalance || totalAllocated;
+        const returnedBudget = userData.returnedBudget || 0;
+        const availableBalance = userData.availableBalance || 0;
         
-        // Calculate remaining balance after purchases (not including returns)
-        const remainingAfterPurchases = availableBalance - usedBudget;
-        const potentialRemaining = remainingAfterPurchases - cartTotal;
+        // Calculate remaining balance considering returns
+        const effectiveUsedBudget = usedBudget - returnedBudget;
+        const remainingBalance = availableBalance - cartTotal;
         
         // Calculate usage percentage based on actual spending against total allocated
-        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
+        const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
+        const usagePercent = (effectiveUsedBudget / effectiveAllocated) * 100;
 
         // Update UI elements
         allocatedAmount.textContent = formatCurrency(totalAllocated);
-        remainingAmount.textContent = formatCurrency(potentialRemaining);
-        spentAmount.textContent = formatCurrency(usedBudget);
+        remainingAmount.textContent = formatCurrency(remainingBalance);
+        spentAmount.textContent = formatCurrency(effectiveUsedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
 
         // Update usage bar color based on percentage
@@ -233,9 +235,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function updateSubmitButton() {
         const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const totalAllocated = userData?.allocatedBudget || 0;
-        const usedBudget = userData?.usedBudget || 0;
-        const canSubmit = cart.length > 0 && userData && (usedBudget + total <= totalAllocated);
+        const availableBalance = userData?.availableBalance || 0;
+        const canSubmit = cart.length > 0 && userData && (total <= availableBalance);
 
         if (canSubmit) {
             submitPurchase.disabled = false;
@@ -248,7 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitPurchase.textContent = 'Add items to cart';
             } else {
                 submitPurchase.className = 'w-full bg-red-400 text-white py-4 px-4 rounded-lg font-medium text-lg disabled:cursor-not-allowed';
-                submitPurchase.textContent = 'Insufficient Budget';
+                submitPurchase.textContent = `Insufficient funds (${formatCurrency(total)})`;
             }
         }
     }
@@ -919,5 +920,65 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('[data-section="return"]').addEventListener('click', () => {
         initializeReturnSection();
     });
+
+    // Add function to handle budget returns
+    async function returnBudget(amount, description = '') {
+        try {
+            const timestamp = Date.now();
+            const user = auth.currentUser;
+
+            // Validate return amount
+            if (amount <= 0) {
+                throw new Error('Return amount must be greater than 0');
+            }
+
+            const availableToReturn = (userData.allocatedBudget || 0) - (userData.usedBudget || 0);
+            if (amount > availableToReturn) {
+                throw new Error('Cannot return more than available unused budget');
+            }
+
+            // Create return record
+            const returnRecord = {
+                amount: parseFloat(amount),
+                timestamp: timestamp,
+                type: 'return',
+                description: description || 'Budget return',
+                subAdminUid: user.uid,
+                subAdminEmail: user.email
+            };
+
+            // Update database
+            await database.ref().transaction((data) => {
+                if (data === null) return data;
+
+                // Add return record
+                if (!data.budget_allocations) {
+                    data.budget_allocations = {};
+                }
+                if (!data.budget_allocations[user.uid]) {
+                    data.budget_allocations[user.uid] = {};
+                }
+                const returnId = `return_${timestamp}`;
+                data.budget_allocations[user.uid][returnId] = returnRecord;
+
+                // Update user's budget tracking
+                if (!data.users[user.uid].returnedBudget) {
+                    data.users[user.uid].returnedBudget = 0;
+                }
+                data.users[user.uid].returnedBudget += parseFloat(amount);
+                data.users[user.uid].allocatedBudget -= parseFloat(amount);
+                data.users[user.uid].availableBalance = (data.users[user.uid].availableBalance || 0) - parseFloat(amount);
+
+                return data;
+            });
+
+            // Refresh user data
+            await initializeBudgetInfo();
+            showMessage('Budget return processed successfully');
+        } catch (error) {
+            console.error('Error processing budget return:', error);
+            showMessage(error.message || 'Error processing budget return', 'error');
+        }
+    }
 });
 
