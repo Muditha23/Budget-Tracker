@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
 
         // Update UI elements
-        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        allocatedAmount.textContent = formatCurrency(availableBalance);
         remainingAmount.textContent = formatCurrency(potentialRemaining);
         spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
