@@ -1289,14 +1289,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update user's budget tracking
                 if (isFullReversal) {
                     // If reversing full amount, reset all budget values
-                    data.users[subAdminUid].allocatedBudget = 0;
-                    data.users[subAdminUid].availableBalance = 0;
-                    // Reset any other budget-related fields
-                    data.users[subAdminUid].returnedBudget = 0;
+                    data.users[subAdminUid] = {
+                        ...data.users[subAdminUid],
+                        allocatedBudget: 0,
+                        availableBalance: 0,
+                        returnedBudget: 0,
+                        lastReversalAmount: amount,
+                        lastReversalTimestamp: timestamp
+                    };
                 } else {
                     // Partial reversal
-                    data.users[subAdminUid].allocatedBudget = currentAllocated - parseFloat(amount);
-                    data.users[subAdminUid].availableBalance = (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount);
+                    data.users[subAdminUid] = {
+                        ...data.users[subAdminUid],
+                        allocatedBudget: currentAllocated - parseFloat(amount),
+                        availableBalance: (data.users[subAdminUid].availableBalance || 0) - parseFloat(amount),
+                        lastReversalAmount: amount,
+                        lastReversalTimestamp: timestamp
+                    };
                 }
 
                 return data;
