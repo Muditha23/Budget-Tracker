@@ -200,7 +200,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const netAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
-        const returnedBudget = userData.returnedBudget || 0;
+        const adminGivenTotal = userData.adminGivenTotal || 0;
+        const adminReversedTotal = userData.adminReversedTotal || 0;
+        const returnedBySubAdmin = userData.returnedBySubAdmin || 0;
         const availableBalance = userData.availableBalance || 0;
         
         // Calculate potential remaining after cart total
@@ -214,6 +216,17 @@ document.addEventListener('DOMContentLoaded', function() {
         remainingAmount.textContent = formatCurrency(potentialRemaining);
         spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
+
+        // Add breakdown of allocations if the elements exist
+        if (document.getElementById('adminGivenTotal')) {
+            document.getElementById('adminGivenTotal').textContent = formatCurrency(adminGivenTotal);
+        }
+        if (document.getElementById('adminReversedTotal')) {
+            document.getElementById('adminReversedTotal').textContent = formatCurrency(adminReversedTotal);
+        }
+        if (document.getElementById('returnedBySubAdmin')) {
+            document.getElementById('returnedBySubAdmin').textContent = formatCurrency(returnedBySubAdmin);
+        }
 
         // Update usage bar color based on percentage
         usageBar.style.width = Math.min(usagePercent, 100) + '%';
@@ -451,30 +464,30 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!currentUser) return;
 
             // Get user data including allocations and transactions
-            const [userSnapshot, allocationsSnapshot, purchasesSnapshot, returnsSnapshot] = await Promise.all([
+            const [userSnapshot, allocationsSnapshot, purchasesSnapshot] = await Promise.all([
                 database.ref(`users/${currentUser.uid}`).once('value'),
                 database.ref(`budget_allocations/${currentUser.uid}`).once('value'),
-                database.ref(`purchases/${currentUser.uid}`).once('value'),
-                database.ref(`budget_returns/${currentUser.uid}`).once('value')
+                database.ref(`purchases/${currentUser.uid}`).once('value')
             ]);
 
             userData = userSnapshot.val();
             if (!userData) return;
 
-            // Calculate total from all allocations
-            let totalAllocated = 0;
-            let totalReversed = 0;
-            let totalReturned = 0;
-
-            // Process allocations
+            // Calculate totals from allocations
             const allocations = allocationsSnapshot.val() || {};
+            
+            // Calculate admin-given and admin-reversed amounts
+            let adminGivenTotal = 0;
+            let adminReversedTotal = 0;
+            let returnedBySubAdmin = 0;
+
             Object.values(allocations).forEach(allocation => {
                 if (allocation.type === 'allocation') {
-                    totalAllocated += allocation.amount;
+                    adminGivenTotal += allocation.amount;
                 } else if (allocation.type === 'reversal') {
-                    totalReversed += allocation.amount;
+                    adminReversedTotal += allocation.amount;
                 } else if (allocation.type === 'return') {
-                    totalReturned += allocation.amount;
+                    returnedBySubAdmin += allocation.amount;
                 }
             });
 
@@ -485,8 +498,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 totalPurchases += purchase.totalAmount || 0;
             });
 
-            // Calculate final available balance
-            const netAllocated = totalAllocated - totalReversed - totalReturned;
+            // Calculate net allocated: Admin Given - Admin Reversed - Returns
+            const netAllocated = adminGivenTotal - adminReversedTotal - returnedBySubAdmin;
+            
+            // Calculate available balance: Net Allocated - Purchases
             const availableBalance = netAllocated - totalPurchases;
 
             // Update user data in state and database
@@ -494,16 +509,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 ...userData,
                 allocatedBudget: netAllocated,
                 usedBudget: totalPurchases,
-                returnedBudget: totalReturned,
-                availableBalance: availableBalance
+                availableBalance: availableBalance,
+                adminGivenTotal: adminGivenTotal,
+                adminReversedTotal: adminReversedTotal,
+                returnedBySubAdmin: returnedBySubAdmin
             };
 
             // Update database with new calculations
             await database.ref(`users/${currentUser.uid}`).update({
                 allocatedBudget: netAllocated,
                 usedBudget: totalPurchases,
-                returnedBudget: totalReturned,
-                availableBalance: availableBalance
+                availableBalance: availableBalance,
+                adminGivenTotal: adminGivenTotal,
+                adminReversedTotal: adminReversedTotal,
+                returnedBySubAdmin: returnedBySubAdmin
             });
 
             // Update UI

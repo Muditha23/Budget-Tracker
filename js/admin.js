@@ -1181,11 +1181,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const adminUser = auth.currentUser;
 
             // Get all necessary data
-            const [userSnapshot, allocationsSnapshot, purchasesSnapshot, returnsSnapshot] = await Promise.all([
+            const [userSnapshot, allocationsSnapshot, purchasesSnapshot] = await Promise.all([
                 database.ref(`users/${subAdminUid}`).once('value'),
                 database.ref(`budget_allocations/${subAdminUid}`).once('value'),
-                database.ref(`purchases/${subAdminUid}`).once('value'),
-                database.ref(`budget_returns/${subAdminUid}`).once('value')
+                database.ref(`purchases/${subAdminUid}`).once('value')
             ]);
 
             const userData = userSnapshot.val();
@@ -1193,20 +1192,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error('User not found');
             }
 
-            // Calculate current totals
-            let totalAllocated = 0;
-            let totalReversed = 0;
-            let totalReturned = 0;
-
-            // Process existing allocations
+            // Calculate current totals from allocations
             const allocations = allocationsSnapshot.val() || {};
+            
+            // First calculate admin-given and admin-reversed amounts
+            let adminGivenTotal = 0;
+            let adminReversedTotal = 0;
+            let returnedBySubAdmin = 0;
+
             Object.values(allocations).forEach(allocation => {
                 if (allocation.type === 'allocation') {
-                    totalAllocated += allocation.amount;
+                    adminGivenTotal += allocation.amount;
                 } else if (allocation.type === 'reversal') {
-                    totalReversed += allocation.amount;
+                    adminReversedTotal += allocation.amount;
                 } else if (allocation.type === 'return') {
-                    totalReturned += allocation.amount;
+                    returnedBySubAdmin += allocation.amount;
                 }
             });
 
@@ -1217,8 +1217,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 totalPurchases += purchase.totalAmount || 0;
             });
 
-            // Calculate current net allocated and available balance
-            let netAllocated = totalAllocated - totalReversed - totalReturned;
+            // Calculate net allocated: Admin Given - Admin Reversed - Returns
+            let netAllocated = adminGivenTotal - adminReversedTotal - returnedBySubAdmin;
+            
+            // Calculate available balance: Net Allocated - Purchases
             let availableBalance = netAllocated - totalPurchases;
 
             // Apply the new transaction
@@ -1229,19 +1231,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (availableBalance < amount) {
                     throw new Error('Cannot reverse more than available balance');
                 }
-                netAllocated -= amount;
+                netAllocated -= amount; // Explicitly reduce net allocated by reversal
                 availableBalance -= amount;
+                adminReversedTotal += amount; // Update admin reversed total
             } else if (type === 'return') {
                 netAllocated -= amount;
-                // availableBalance is already reduced when subadmin returns
+                returnedBySubAdmin += amount;
             }
 
-            // Update user's budget information
+            // Update user's budget information with detailed breakdown
             await database.ref(`users/${subAdminUid}`).update({
                 allocatedBudget: netAllocated,
                 availableBalance: availableBalance,
                 usedBudget: totalPurchases,
-                returnedBudget: totalReturned
+                adminGivenTotal: adminGivenTotal + (type === 'allocation' ? amount : 0),
+                adminReversedTotal: adminReversedTotal,
+                returnedBySubAdmin: returnedBySubAdmin
             });
 
             // Record the allocation transaction
@@ -1251,13 +1256,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 type: type,
                 timestamp: timestamp,
                 adminUid: adminUser.uid,
-                adminEmail: adminUser.email
+                adminEmail: adminUser.email,
+                netAllocatedAfterOperation: netAllocated,
+                availableBalanceAfterOperation: availableBalance
             });
 
             // Update overview data
             await updateOverviewData();
             
-            showMessage(`Budget ${type} of ${formatCurrency(amount)} processed successfully`, 'success');
+            showMessage(`Budget ${type} of ${formatCurrency(amount)} processed successfully. Net allocated: ${formatCurrency(netAllocated)}`, 'success');
             return true;
         } catch (error) {
             console.error('Error in budget allocation:', error);
