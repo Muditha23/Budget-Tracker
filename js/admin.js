@@ -1173,5 +1173,106 @@ document.addEventListener('DOMContentLoaded', function() {
                 return errorCode || 'An error occurred. Please try again.';
         }
     }
+
+    // Budget allocation functions
+    async function allocateBudgetToSubAdmin(subAdminUid, amount, type = 'allocation') {
+        try {
+            const timestamp = Date.now();
+            const adminUser = auth.currentUser;
+
+            // Get current user data
+            const userSnapshot = await database.ref(`users/${subAdminUid}`).once('value');
+            const userData = userSnapshot.val();
+            
+            if (!userData) {
+                throw new Error('User not found');
+            }
+
+            // Get current allocation data
+            const currentAllocated = userData.allocatedBudget || 0;
+            const currentAvailable = userData.availableBalance || 0;
+            
+            let newAllocatedTotal, newAvailableBalance;
+            
+            if (type === 'allocation') {
+                // For new allocation, increase both allocated and available
+                newAllocatedTotal = currentAllocated + amount;
+                newAvailableBalance = currentAvailable + amount;
+            } else if (type === 'reversal') {
+                // For reversal, decrease both allocated and available
+                if (currentAvailable < amount) {
+                    throw new Error('Cannot reverse more than available balance');
+                }
+                newAllocatedTotal = currentAllocated - amount;
+                newAvailableBalance = currentAvailable - amount;
+            } else if (type === 'return') {
+                // For returns, only decrease allocated (available is already decreased)
+                newAllocatedTotal = currentAllocated - amount;
+                newAvailableBalance = currentAvailable;
+            }
+
+            // Update user's budget information
+            await database.ref(`users/${subAdminUid}`).update({
+                allocatedBudget: newAllocatedTotal,
+                availableBalance: newAvailableBalance
+            });
+
+            // Record the allocation transaction
+            const allocationRef = database.ref(`budget_allocations/${subAdminUid}`).push();
+            await allocationRef.set({
+                amount: amount,
+                type: type,
+                timestamp: timestamp,
+                adminUid: adminUser.uid,
+                adminEmail: adminUser.email
+            });
+
+            // Update overview data
+            await updateOverviewData();
+            
+            showMessage(`Budget ${type} of ${formatCurrency(amount)} processed successfully`, 'success');
+            return true;
+        } catch (error) {
+            console.error('Error in budget allocation:', error);
+            showMessage(error.message || 'Error processing budget operation', 'error');
+            return false;
+        }
+    }
+
+    async function updateOverviewData() {
+        try {
+            // Get all sub-admins
+            const usersSnapshot = await database.ref('users')
+                .orderByChild('role')
+                .equalTo('subadmin')
+                .once('value');
+            
+            const subAdmins = usersSnapshot.val() || {};
+            
+            // Calculate total allocated and available budget
+            let totalAllocated = 0;
+            let totalAvailable = 0;
+            
+            Object.values(subAdmins).forEach(user => {
+                totalAllocated += user.allocatedBudget || 0;
+                totalAvailable += user.availableBalance || 0;
+            });
+            
+            // Update overview in database
+            await database.ref('budget/overview').update({
+                totalAllocated: totalAllocated,
+                totalAvailable: totalAvailable,
+                lastUpdated: Date.now()
+            });
+            
+            // Refresh dashboard if we're on it
+            if (currentSection === 'dashboard') {
+                await loadDashboardData();
+            }
+        } catch (error) {
+            console.error('Error updating overview:', error);
+            showMessage('Error updating overview data', 'error');
+        }
+    }
 });
 

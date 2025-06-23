@@ -201,14 +201,14 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get total allocated and used budget
         const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
-        const availableBalance = userData.availableBalance || totalAllocated;
+        const returnedBudget = userData.returnedBudget || 0;
+        const availableBalance = userData.availableBalance || 0;
         
-        // Calculate remaining balance after purchases (not including returns)
-        const remainingAfterPurchases = availableBalance - usedBudget;
-        const potentialRemaining = remainingAfterPurchases - cartTotal;
+        // Calculate remaining balance after purchases
+        const potentialRemaining = availableBalance - cartTotal;
         
         // Calculate usage percentage based on actual spending against total allocated
-        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
+        const usagePercent = totalAllocated > 0 ? ((usedBudget - returnedBudget) / totalAllocated) * 100 : 0;
 
         // Update UI elements
         allocatedAmount.textContent = formatCurrency(totalAllocated);
@@ -919,5 +919,65 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('[data-section="return"]').addEventListener('click', () => {
         initializeReturnSection();
     });
+
+    // Budget return functions
+    async function returnBudget(amount, reason = '') {
+        try {
+            const timestamp = Date.now();
+            const currentUser = auth.currentUser;
+
+            // Get current user data
+            const userSnapshot = await database.ref(`users/${currentUser.uid}`).once('value');
+            const userData = userSnapshot.val();
+            
+            if (!userData) {
+                throw new Error('User data not found');
+            }
+
+            const currentAvailable = userData.availableBalance || 0;
+            
+            if (currentAvailable < amount) {
+                throw new Error('Cannot return more than available balance');
+            }
+
+            // Update available balance
+            const newAvailableBalance = currentAvailable - amount;
+            
+            // Update user's budget information
+            await database.ref(`users/${currentUser.uid}`).update({
+                availableBalance: newAvailableBalance,
+                returnedBudget: (userData.returnedBudget || 0) + amount
+            });
+
+            // Record the return transaction
+            const returnRef = database.ref(`budget_returns/${currentUser.uid}`).push();
+            await returnRef.set({
+                amount: amount,
+                reason: reason,
+                timestamp: timestamp,
+                userEmail: currentUser.email
+            });
+
+            // Add to budget allocations for admin tracking
+            const allocationRef = database.ref(`budget_allocations/${currentUser.uid}`).push();
+            await allocationRef.set({
+                amount: amount,
+                type: 'return',
+                timestamp: timestamp,
+                userEmail: currentUser.email,
+                reason: reason
+            });
+
+            showMessage(`Successfully returned ${formatCurrency(amount)}`, 'success');
+            
+            // Refresh budget display
+            await initializeBudgetInfo();
+            return true;
+        } catch (error) {
+            console.error('Error in budget return:', error);
+            showMessage(error.message || 'Error processing budget return', 'error');
+            return false;
+        }
+    }
 });
 
