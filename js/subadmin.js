@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const usageBar = document.getElementById('usageBar');
     const spentAmount = document.getElementById('spentAmount');
 
-    // Cart state
+    // State
     let cart = [];
     let predefinedItems = {};
     let userData = null;
@@ -209,12 +209,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateBudgetDisplay(cartTotal = 0) {
-        if (!userData) return;
+        if (!window.userData) return;
 
         // Get total allocated and used budget
-        const totalAllocated = userData.allocatedBudget || 0;
-        const usedBudget = userData.usedBudget || 0;
-        const availableBalance = userData.availableBalance || totalAllocated;
+        const totalAllocated = window.userData.allocatedBudget || 0;
+        const usedBudget = window.userData.usedBudget || 0;
+        const availableBalance = window.userData.availableBalance || totalAllocated;
         
         // Calculate remaining balance after purchases (not including returns)
         const remainingAfterPurchases = availableBalance - usedBudget;
@@ -224,23 +224,25 @@ document.addEventListener('DOMContentLoaded', function() {
         const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
 
         // Update UI elements
-        allocatedAmount.textContent = formatCurrency(totalAllocated);
-        remainingAmount.textContent = formatCurrency(potentialRemaining);
-        spentAmount.textContent = formatCurrency(usedBudget);
-        usagePercentage.textContent = Math.round(usagePercent) + '%';
+        if (allocatedAmount) allocatedAmount.textContent = formatCurrency(totalAllocated);
+        if (remainingAmount) remainingAmount.textContent = formatCurrency(potentialRemaining);
+        if (spentAmount) spentAmount.textContent = formatCurrency(usedBudget);
+        if (usagePercentage) usagePercentage.textContent = Math.round(usagePercent) + '%';
 
         // Update usage bar color based on percentage
-        usageBar.style.width = Math.min(usagePercent, 100) + '%';
-        
-        if (usagePercent >= 90) {
-            usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-red-600';
-        } else if (usagePercent >= 80) {
-            usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-yellow-600';
-        } else {
-            usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
-            remainingAmount.className = 'text-xl font-bold text-green-600';
+        if (usageBar) {
+            usageBar.style.width = Math.min(usagePercent, 100) + '%';
+            
+            if (usagePercent >= 90) {
+                usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
+                remainingAmount.className = 'text-xl font-bold text-red-600';
+            } else if (usagePercent >= 80) {
+                usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
+                remainingAmount.className = 'text-xl font-bold text-yellow-600';
+            } else {
+                usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
+                remainingAmount.className = 'text-xl font-bold text-green-600';
+            }
         }
     }
 
@@ -313,10 +315,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize interface when user data is available
     window.initializeSubAdminInterface = async function(userDataParam) {
         try {
-            userData = userDataParam;
-            await updateBudgetInfo();
+            // Store the user data first
+            window.userData = userDataParam;
+            
+            // Initialize all components
+            await initializeBudgetInfo();
             await loadPurchaseHistory();
             setupItemsListener();
+            
+            // Update initial displays
+            updateBudgetDisplay();
         } catch (error) {
             console.error('Error during initialization:', error);
             showMessage('Error initializing page', 'error');
@@ -467,21 +475,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize budget info
     async function initializeBudgetInfo() {
         try {
-            if (!subAdminAuth.currentUser) return;
-
-            // Get user data including budget info
-            const userRef = database.ref(`users/${subAdminAuth.currentUser.uid}`);
-            const userSnapshot = await userRef.once('value');
-            userData = userSnapshot.val();
-
-            if (!userData) {
-                showMessage('Error loading user data', 'error');
-                return;
-            }
+            if (!subAdminAuth.currentUser || !window.userData) return;
 
             // Set up real-time listener for budget updates
+            const userRef = database.ref(`users/${subAdminAuth.currentUser.uid}`);
             userRef.on('value', (snapshot) => {
-                userData = snapshot.val();
+                window.userData = snapshot.val();
                 updateBudgetDisplay();
                 
                 // Load budget history
@@ -914,6 +913,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof window.initializeSubAdminInterface === 'undefined') {
         window.initializeSubAdminInterface = async function(userData) {
             try {
+                // Initialize all components
                 await initializeBudgetInfo();
                 await loadPurchaseHistory();
                 setupItemsListener();
