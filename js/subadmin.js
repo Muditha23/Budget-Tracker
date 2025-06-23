@@ -1,5 +1,30 @@
 // Sub Admin Interface Implementation
 document.addEventListener('DOMContentLoaded', function() {
+    // Enable pull-to-refresh functionality
+    if ('serviceWorker' in navigator) {
+        // Enable native pull to refresh
+        const mainContent = document.querySelector('main');
+        if (mainContent) {
+            mainContent.style.overscrollBehavior = 'contain';
+            let touchstartY = 0;
+            let touchendY = 0;
+            
+            mainContent.addEventListener('touchstart', e => {
+                touchstartY = e.touches[0].screenY;
+            }, { passive: true });
+            
+            mainContent.addEventListener('touchend', e => {
+                touchendY = e.changedTouches[0].screenY;
+                if (touchendY - touchstartY > 100 && window.scrollY === 0) {
+                    // Show loading indicator
+                    showMessage('Refreshing...', 'info');
+                    // Refresh the page
+                    window.location.reload();
+                }
+            }, { passive: true });
+        }
+    }
+
     // Initialize authentication
     const subAdminAuth = new SubAdminAuth();
     
