@@ -211,11 +211,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return sum + allocation.amount;
             }, 0);
 
-            // Calculate actual used budget by considering returns
-            const actualUsedBudget = (user.usedBudget || 0) - (user.returnedBudget || 0);
+            // Get the actual spent amount (not including returns)
+            const actualSpentBudget = user.usedBudget || 0;
             
-            // Calculate usage percentage based on actual used budget
-            const usagePercent = ((actualUsedBudget) / (totalAllocated || 1)) * 100;
+            // Calculate usage percentage based on actual spent amount against total allocated
+            const usagePercent = ((actualSpentBudget) / (totalAllocated || 1)) * 100;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -223,8 +223,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div>
                         <p class="font-medium text-gray-800">${user.email}</p>
                         <p class="text-sm text-gray-600">Total Budget: ${formatCurrency(totalAllocated)}</p>
-                        <p class="text-sm text-gray-600">Used: ${formatCurrency(actualUsedBudget)}</p>
+                        <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
                         <p class="text-sm text-gray-600">Returns: ${formatCurrency(user.returnedBudget || 0)}</p>
+                        <p class="text-sm text-gray-600">Available: ${formatCurrency(totalAllocated - actualSpentBudget)}</p>
                     </div>
                     <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
                 </div>
