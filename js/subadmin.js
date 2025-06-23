@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Get total allocated and used budget
+        // Get budget values directly from userData
         const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
         const returnedBudget = userData.returnedBudget || 0;
@@ -211,7 +211,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const effectiveAllocated = totalAllocated > 0 ? totalAllocated : 1;
         const usagePercent = (usedBudget / effectiveAllocated) * 100;
 
-        // Update UI elements
+        // Update UI elements with proper currency formatting
         allocatedAmount.textContent = formatCurrency(totalAllocated);
         remainingAmount.textContent = formatCurrency(remainingBalance);
         spentAmount.textContent = formatCurrency(usedBudget);
@@ -229,6 +229,34 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
             remainingAmount.className = 'text-xl font-bold text-green-600';
+        }
+
+        // Force update of the budget overview section
+        const budgetOverview = document.getElementById('budgetOverview');
+        if (budgetOverview) {
+            budgetOverview.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="text-center p-4 bg-blue-50 rounded-lg">
+                        <p class="text-sm text-gray-600">Total Allocated</p>
+                        <p class="text-xl font-bold text-blue-600">${formatCurrency(totalAllocated)}</p>
+                    </div>
+                    <div class="text-center p-4 bg-orange-50 rounded-lg">
+                        <p class="text-sm text-gray-600">Spent on Purchases</p>
+                        <p class="text-xl font-bold text-orange-600">${formatCurrency(usedBudget)}</p>
+                    </div>
+                    <div class="text-center p-4 bg-green-50 rounded-lg">
+                        <p class="text-sm text-gray-600">Available for Spending</p>
+                        <p class="text-xl font-bold text-green-600">${formatCurrency(availableBalance)}</p>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm text-gray-600 mb-2">Purchase Usage</p>
+                    <div class="bg-gray-200 h-2 rounded-full">
+                        <div class="h-2 rounded-full transition-all duration-300 ${usageBar.className}" style="width: ${usagePercent}%"></div>
+                    </div>
+                    <p class="text-right text-sm text-gray-600 mt-1">${Math.round(usagePercent)}%</p>
+                </div>
+            `;
         }
     }
 
@@ -459,38 +487,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            // Set up real-time listener for user data changes
+            database.ref(`users/${uid}`).on('value', (snapshot) => {
+                userData = snapshot.val();
+                if (userData) {
+                    updateBudgetDisplay();
+                }
+            });
+
             // Set up real-time listener for budget allocations
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
-                // Calculate total allocated budget (original amount given by admin)
-                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
-                }, 0);
-
-                // Calculate available balance (allocated minus returns)
-                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
-                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
-                }, 0);
-
-                // Update user data in memory and database
-                userData = {
-                    ...userData,
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
-                };
-
-                // Update the database with new values
-                await database.ref(`users/${uid}`).update({
-                    allocatedBudget: totalAllocated,
-                    availableBalance: availableBalance
-                });
-
-                // Update budget display
-                updateBudgetDisplay();
+                // Get the latest user data
+                const latestUserData = (await database.ref(`users/${uid}`).once('value')).val();
                 
-                // Generate and display budget history
-                generateBudgetHistory(allocations);
+                if (latestUserData) {
+                    // Use the allocatedBudget directly from user data
+                    const totalAllocated = latestUserData.allocatedBudget || 0;
+                    const availableBalance = latestUserData.availableBalance || 0;
+
+                    // Update user data in memory
+                    userData = {
+                        ...latestUserData,
+                        allocatedBudget: totalAllocated,
+                        availableBalance: availableBalance
+                    };
+
+                    // Update budget display
+                    updateBudgetDisplay();
+                    
+                    // Generate and display budget history
+                    generateBudgetHistory(allocations);
+                }
             });
 
         } catch (error) {
