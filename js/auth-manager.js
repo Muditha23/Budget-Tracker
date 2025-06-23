@@ -175,6 +175,19 @@ class SubAdminAuth {
             const newUsedBudget = currentUsedBudget + totalAmount;
             await database.ref('users/' + this.currentUser.uid + '/usedBudget').set(newUsedBudget);
 
+            // Remove purchased predefined items from items collection
+            const itemsToRemove = cartItems
+                .filter(item => !item.id.startsWith('custom_'))
+                .map(item => item.id);
+            
+            if (itemsToRemove.length > 0) {
+                const updates = {};
+                itemsToRemove.forEach(itemId => {
+                    updates['/items/' + itemId] = null;
+                });
+                await database.ref().update(updates);
+            }
+
             // Update local userData
             this.userData.usedBudget = newUsedBudget;
 
