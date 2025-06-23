@@ -52,8 +52,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const usagePercentage = document.getElementById('usagePercentage');
     const usageBar = document.getElementById('usageBar');
     const spentAmount = document.getElementById('spentAmount');
-    const returnedAmount = document.getElementById('returnedAmount');
-    const totalBudgetHistory = document.getElementById('totalBudgetHistory');
 
     // Cart state
     let cart = [];
@@ -225,56 +223,58 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        const totalBudget = userData.allocatedBudget || 0;
-        const spentAmount = userData.usedBudget || 0;
-        const returnedAmount = userData.returnedBudget || 0;
-        const availableBalance = userData.availableBalance || 0;
-
-        // Update display elements
-        document.getElementById('allocatedAmount').textContent = formatCurrency(totalBudget);
-        document.getElementById('spentAmount').textContent = formatCurrency(spentAmount);
-        document.getElementById('remainingAmount').textContent = formatCurrency(availableBalance - spentAmount);
-        document.getElementById('returnedAmount').textContent = formatCurrency(returnedAmount);
-        document.getElementById('totalBudgetHistory').textContent = formatCurrency(totalBudget);
-
-        // Calculate and update usage percentage
-        const effectiveBalance = availableBalance - returnedAmount;
-        const usagePercent = effectiveBalance > 0 ? (spentAmount / effectiveBalance) * 100 : 0;
+        // Get total allocated and used budget
+        const totalAllocated = userData.allocatedBudget || 0;
+        const usedBudget = userData.usedBudget || 0;
+        const availableBalance = userData.availableBalance || totalAllocated;
         
-        document.getElementById('usagePercentage').textContent = `${Math.round(usagePercent)}%`;
-        const usageBar = document.getElementById('usageBar');
-        usageBar.style.width = `${Math.min(usagePercent, 100)}%`;
+        // Calculate remaining balance after purchases (not including returns)
+        const remainingAfterPurchases = availableBalance - usedBudget;
+        const potentialRemaining = remainingAfterPurchases - cartTotal;
         
+        // Calculate usage percentage based on actual spending against total allocated
+        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
+
+        // Update UI elements
+        allocatedAmount.textContent = formatCurrency(totalAllocated);
+        remainingAmount.textContent = formatCurrency(potentialRemaining);
+        spentAmount.textContent = formatCurrency(usedBudget);
+        usagePercentage.textContent = Math.round(usagePercent) + '%';
+
         // Update usage bar color based on percentage
+        usageBar.style.width = Math.min(usagePercent, 100) + '%';
+        
         if (usagePercent >= 90) {
-            usageBar.classList.remove('bg-blue-600', 'bg-yellow-600');
-            usageBar.classList.add('bg-red-600');
-        } else if (usagePercent >= 75) {
-            usageBar.classList.remove('bg-blue-600', 'bg-red-600');
-            usageBar.classList.add('bg-yellow-600');
+            usageBar.className = 'bg-red-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-red-600';
+        } else if (usagePercent >= 80) {
+            usageBar.className = 'bg-yellow-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-yellow-600';
         } else {
-            usageBar.classList.remove('bg-yellow-600', 'bg-red-600');
-            usageBar.classList.add('bg-blue-600');
-        }
-
-        // Update submit button state if cart total is provided
-        if (cartTotal > 0) {
-            updateSubmitButton();
+            usageBar.className = 'bg-green-500 h-2 rounded-full transition-all duration-300';
+            remainingAmount.className = 'text-xl font-bold text-green-600';
         }
     }
 
     function updateSubmitButton() {
-        const cartTotalAmount = parseFloat(cartTotal.textContent.replace(/[^0-9.-]+/g, '')) || 0;
-        const remainingAmount = (userData.availableBalance || 0) - (userData.usedBudget || 0);
-        
-        submitPurchase.disabled = cartTotalAmount <= 0 || cartTotalAmount > remainingAmount;
-        
-        if (cartTotalAmount <= 0) {
-            submitPurchase.textContent = 'Add items to cart';
-        } else if (cartTotalAmount > remainingAmount) {
-            submitPurchase.textContent = 'Insufficient balance';
+        const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const totalAllocated = userData?.allocatedBudget || 0;
+        const usedBudget = userData?.usedBudget || 0;
+        const canSubmit = cart.length > 0 && userData && (usedBudget + total <= totalAllocated);
+
+        if (canSubmit) {
+            submitPurchase.disabled = false;
+            submitPurchase.className = 'w-full bg-blue-600 text-white py-4 px-4 rounded-lg font-medium text-lg hover:bg-blue-700 transition-colors';
+            submitPurchase.textContent = `Submit Purchase (${formatCurrency(total)})`;
         } else {
-            submitPurchase.textContent = 'Submit Purchase';
+            submitPurchase.disabled = true;
+            if (cart.length === 0) {
+                submitPurchase.className = 'w-full bg-gray-400 text-white py-4 px-4 rounded-lg font-medium text-lg disabled:cursor-not-allowed';
+                submitPurchase.textContent = 'Add items to cart';
+            } else {
+                submitPurchase.className = 'w-full bg-red-400 text-white py-4 px-4 rounded-lg font-medium text-lg disabled:cursor-not-allowed';
+                submitPurchase.textContent = 'Insufficient Budget';
+            }
         }
     }
 
@@ -488,13 +488,13 @@ document.addEventListener('DOMContentLoaded', function() {
             database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
                 const allocations = allocationsSnapshot.val() || {};
                 
+                // Calculate total allocated budget (considering both allocations and reversals)
+                let totalAllocated = 0;
+                let availableBalance = 0;
+                
                 // Sort allocations by timestamp to process them in chronological order
                 const sortedAllocations = Object.values(allocations)
                     .sort((a, b) => a.timestamp - b.timestamp);
-                
-                // Calculate total allocated budget and available balance
-                let totalAllocated = 0;
-                let availableBalance = 0;
                 
                 // Process allocations in order
                 sortedAllocations.forEach(allocation => {
@@ -527,29 +527,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Generate and display budget history
                 generateBudgetHistory(allocations);
-            });
-
-            // Set up real-time listener for returns
-            database.ref(`balance_returns/${uid}`).on('value', async (returnsSnapshot) => {
-                const returns = returnsSnapshot.val() || {};
-                
-                // Calculate total returned amount
-                const totalReturned = Object.values(returns)
-                    .reduce((sum, ret) => sum + (ret.amount || 0), 0);
-
-                // Update user data with returned amount
-                userData = {
-                    ...userData,
-                    returnedBudget: totalReturned
-                };
-
-                // Update the database
-                await database.ref(`users/${uid}`).update({
-                    returnedBudget: totalReturned
-                });
-
-                // Update display
-                updateBudgetDisplay();
             });
 
         } catch (error) {
