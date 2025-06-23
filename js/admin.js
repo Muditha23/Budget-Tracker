@@ -215,16 +215,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
 
-            // Get the actual spent amount and returns
+            // Get the actual spent amount
             const actualSpentBudget = user.usedBudget || 0;
-            const returnedAmount = user.returnedBudget || 0;
             
-            // Calculate remaining balance
-            const remainingBalance = totalAllocated - actualSpentBudget - returnedAmount;
+            // Calculate remaining balance (we don't add returnedBudget here since it's already counted in reversals)
+            const remainingBalance = totalAllocated - actualSpentBudget;
             
-            // Calculate usage percentage based on spent vs allocated (excluding returns)
-            const effectiveAllocation = totalAllocated - returnedAmount;
-            const usagePercent = effectiveAllocation > 0 ? (actualSpentBudget / effectiveAllocation) * 100 : 0;
+            // Calculate usage percentage based on spent vs allocated
+            const usagePercent = totalAllocated > 0 ? (actualSpentBudget / totalAllocated) * 100 : 0;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -236,7 +234,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <p class="text-sm text-gray-600">Spent: ${formatCurrency(actualSpentBudget)}</p>
                         </div>
                         <div>
-                            <p class="text-sm text-gray-600">Returned: ${formatCurrency(returnedAmount)}</p>
+                            <p class="text-sm text-gray-600">Returned: ${formatCurrency(Math.abs(totalAllocated < 0 ? totalAllocated : 0))}</p>
                             <p class="text-sm font-medium text-blue-600">Remaining: ${formatCurrency(remainingBalance)}</p>
                             <p class="text-sm font-medium ${statusColor}">Usage: ${Math.round(usagePercent)}%</p>
                         </div>
@@ -769,12 +767,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 const used = user.usedBudget || 0;
-                const returned = user.returnedBudget || 0;
-                const remaining = totalAllocatedToUser - used - returned;
                 
-                // Calculate usage percentage based on effective allocation (excluding returns)
-                const effectiveAllocation = totalAllocatedToUser - returned;
-                const usagePercent = effectiveAllocation > 0 ? (used / effectiveAllocation) * 100 : 0;
+                // Calculate remaining balance (don't include returnedBudget as it's counted in reversals)
+                const remaining = totalAllocatedToUser - used;
+                
+                // Calculate returned amount from negative allocation (due to reversals)
+                const returned = Math.abs(totalAllocatedToUser < 0 ? totalAllocatedToUser : 0);
+                
+                // Calculate usage percentage based on allocated amount
+                const usagePercent = totalAllocatedToUser > 0 ? (used / totalAllocatedToUser) * 100 : 0;
                 
                 return `
                     <div class="bg-gray-50 rounded-lg p-4">
