@@ -27,17 +27,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const usagePercentage = document.getElementById('usagePercentage');
     const usageBar = document.getElementById('usageBar');
     const spentAmount = document.getElementById('spentAmount');
-    const adminGivenHistory = document.getElementById('adminGivenHistory');
-    const reversedBudgetHistory = document.getElementById('reversedBudgetHistory');
 
     // Cart state
     let cart = [];
     let predefinedItems = {};
     let userData = null;
-    let budgetHistory = {
-        given: [],
-        reversed: []
-    };
 
     // Tab switching
     predefinedTab.addEventListener('click', () => switchTab('predefined'));
@@ -204,17 +198,14 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        // Calculate total allocated including admin given and reversed
-        const adminGivenTotal = budgetHistory.given.reduce((sum, item) => sum + item.amount, 0);
-        const adminReversedTotal = budgetHistory.reversed.reduce((sum, item) => sum + item.amount, 0);
-        const totalAllocated = (userData.allocatedBudget || 0) + adminGivenTotal - adminReversedTotal;
-        
-        // Get used budget
+        // Get total allocated and used budget
+        const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
+        const availableBalance = userData.availableBalance || totalAllocated;
         
-        // Calculate available balance
-        const availableBalance = totalAllocated - usedBudget;
-        const potentialRemaining = availableBalance - cartTotal;
+        // Calculate remaining balance after purchases (not including returns)
+        const remainingAfterPurchases = availableBalance - usedBudget;
+        const potentialRemaining = remainingAfterPurchases - cartTotal;
         
         // Calculate usage percentage based on actual spending against total allocated
         const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
@@ -240,52 +231,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function updateBudgetHistory() {
-        // Update Admin Given History
-        if (budgetHistory.given.length === 0) {
-            adminGivenHistory.innerHTML = '<p class="text-gray-500 text-center py-4">No budget allocations yet</p>';
-        } else {
-            const givenHTML = budgetHistory.given.map(item => `
-                <div class="flex justify-between items-center p-4 bg-green-50 rounded-lg">
-                    <div>
-                        <p class="font-medium text-gray-800">${formatCurrency(item.amount)}</p>
-                        <p class="text-sm text-gray-600">${new Date(item.timestamp).toLocaleDateString()}</p>
-                    </div>
-                    <div class="text-sm text-gray-600">
-                        ${item.note ? `<p class="italic">${item.note}</p>` : ''}
-                    </div>
-                </div>
-            `).join('');
-            adminGivenHistory.innerHTML = givenHTML;
-        }
-
-        // Update Reversed Budget History
-        if (budgetHistory.reversed.length === 0) {
-            reversedBudgetHistory.innerHTML = '<p class="text-gray-500 text-center py-4">No budget reversals yet</p>';
-        } else {
-            const reversedHTML = budgetHistory.reversed.map(item => `
-                <div class="flex justify-between items-center p-4 bg-red-50 rounded-lg">
-                    <div>
-                        <p class="font-medium text-gray-800">${formatCurrency(item.amount)}</p>
-                        <p class="text-sm text-gray-600">${new Date(item.timestamp).toLocaleDateString()}</p>
-                    </div>
-                    <div class="text-sm text-gray-600">
-                        ${item.note ? `<p class="italic">${item.note}</p>` : ''}
-                    </div>
-                </div>
-            `).join('');
-            reversedBudgetHistory.innerHTML = reversedHTML;
-        }
-    }
-
     function updateSubmitButton() {
         const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        
-        // Calculate total allocated including admin given and reversed
-        const adminGivenTotal = budgetHistory.given.reduce((sum, item) => sum + item.amount, 0);
-        const adminReversedTotal = budgetHistory.reversed.reduce((sum, item) => sum + item.amount, 0);
-        const totalAllocated = (userData?.allocatedBudget || 0) + adminGivenTotal - adminReversedTotal;
-        
+        const totalAllocated = userData?.allocatedBudget || 0;
         const usedBudget = userData?.usedBudget || 0;
         const canSubmit = cart.length > 0 && userData && (usedBudget + total <= totalAllocated);
 
@@ -300,7 +248,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitPurchase.textContent = 'Add items to cart';
             } else {
                 submitPurchase.className = 'w-full bg-red-400 text-white py-4 px-4 rounded-lg font-medium text-lg disabled:cursor-not-allowed';
-                submitPurchase.textContent = 'Insufficient budget';
+                submitPurchase.textContent = 'Insufficient Budget';
             }
         }
     }
@@ -500,26 +448,49 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize budget info
     async function initializeBudgetInfo() {
         try {
-            const userId = subAdminAuth.getCurrentUserId();
-            if (!userId) {
-                console.error('No user ID found');
+            const uid = firebase.auth().currentUser.uid;
+            
+            // Get initial user data
+            const userSnapshot = await database.ref(`users/${uid}`).once('value');
+            userData = userSnapshot.val();
+
+            if (!userData) {
+                showMessage('Error: User data not found', 'error');
                 return;
             }
 
-            // Get user data reference
-            const userRef = firebase.database().ref(`users/${userId}`);
-            
-            // Listen for user data changes
-            userRef.on('value', (snapshot) => {
-                userData = snapshot.val() || {};
+            // Set up real-time listener for budget allocations
+            database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
+                const allocations = allocationsSnapshot.val() || {};
                 
-                // Update budget history
-                budgetHistory.given = userData.budgetHistory?.given || [];
-                budgetHistory.reversed = userData.budgetHistory?.reversed || [];
-                
-                // Update displays
+                // Calculate total allocated budget (original amount given by admin)
+                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
+                }, 0);
+
+                // Calculate available balance (allocated minus returns)
+                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                }, 0);
+
+                // Update user data in memory and database
+                userData = {
+                    ...userData,
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                };
+
+                // Update the database with new values
+                await database.ref(`users/${uid}`).update({
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                });
+
+                // Update budget display
                 updateBudgetDisplay();
-                updateBudgetHistory();
+                
+                // Generate and display budget history
+                generateBudgetHistory(allocations);
             });
 
         } catch (error) {
@@ -527,6 +498,51 @@ document.addEventListener('DOMContentLoaded', function() {
             showMessage('Error loading budget information', 'error');
         }
     }
+
+    function generateBudgetHistory(allocations) {
+        if (!allocations || Object.keys(allocations).length === 0) {
+            return '<p class="text-gray-500">No budget allocation history</p>';
+        }
+
+        const historyArray = Object.entries(allocations)
+            .map(([id, allocation]) => ({
+                ...allocation,
+                id
+            }))
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+        return `
+            <div class="bg-white rounded-lg shadow p-4">
+                <h3 class="text-lg font-semibold mb-4">Budget Allocation History</h3>
+                <div class="space-y-3">
+                    ${historyArray.map(allocation => `
+                        <div class="border-b border-gray-200 pb-2 last:border-0">
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium ${allocation.type === 'reversal' ? 'text-red-600' : 'text-green-600'}">
+                                    ${allocation.type === 'reversal' ? '-' : '+'}${formatCurrency(allocation.amount)}
+                                </span>
+                                <span class="text-gray-500 text-sm">${formatDate(allocation.timestamp)}</span>
+                            </div>
+                            <p class="text-gray-600 text-sm">
+                                ${allocation.type === 'reversal' 
+                                    ? `Reversed by: ${allocation.adminEmail}`
+                                    : `Allocated by: ${allocation.adminEmail}`}
+                            </p>
+                            ${allocation.notes ? `<p class="text-gray-500 text-xs italic">${allocation.notes}</p>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Call initializeBudgetInfo after authentication
+    firebase.auth().onAuthStateChanged(function(user) {
+        if (user) {
+            initializeBudgetInfo();
+            setupItemsListener();
+        }
+    });
 
     // Sidebar functionality
     const sidebar = document.getElementById('sidebar');
@@ -902,27 +918,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize return section when showing it
     document.querySelector('[data-section="return"]').addEventListener('click', () => {
         initializeReturnSection();
-    });
-
-    // Call initializeBudgetInfo after authentication
-    firebase.auth().onAuthStateChanged(function(user) {
-        if (user) {
-            initializeBudgetInfo();
-            setupItemsListener();
-            
-            // Set up real-time listener for budget history
-            const userId = subAdminAuth.getCurrentUserId();
-            if (userId) {
-                const budgetHistoryRef = firebase.database().ref(`users/${userId}/budgetHistory`);
-                budgetHistoryRef.on('value', (snapshot) => {
-                    const history = snapshot.val() || {};
-                    budgetHistory.given = history.given || [];
-                    budgetHistory.reversed = history.reversed || [];
-                    updateBudgetHistory();
-                    updateBudgetDisplay();
-                });
-            }
-        }
     });
 });
 
