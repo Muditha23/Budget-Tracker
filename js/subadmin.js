@@ -198,35 +198,23 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateBudgetDisplay(cartTotal = 0) {
         if (!userData) return;
 
-        const netAllocated = userData.allocatedBudget || 0;
+        // Get total allocated and used budget
+        const totalAllocated = userData.allocatedBudget || 0;
         const usedBudget = userData.usedBudget || 0;
-        const adminGivenTotal = userData.adminGivenTotal || 0;
-        const adminReversedTotal = userData.adminReversedTotal || 0;
-        const returnedBySubAdmin = userData.returnedBySubAdmin || 0;
-        const availableBalance = userData.availableBalance || 0;
+        const availableBalance = userData.availableBalance || totalAllocated;
         
-        // Calculate potential remaining after cart total
-        const potentialRemaining = availableBalance - cartTotal;
+        // Calculate remaining balance after purchases (not including returns)
+        const remainingAfterPurchases = availableBalance - usedBudget;
+        const potentialRemaining = remainingAfterPurchases - cartTotal;
         
-        // Calculate usage percentage based on actual spending against net allocated
-        const usagePercent = netAllocated > 0 ? ((usedBudget + cartTotal) / netAllocated) * 100 : 0;
+        // Calculate usage percentage based on actual spending against total allocated
+        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
 
         // Update UI elements
-        allocatedAmount.textContent = formatCurrency(netAllocated);
+        allocatedAmount.textContent = formatCurrency(totalAllocated);
         remainingAmount.textContent = formatCurrency(potentialRemaining);
         spentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
-
-        // Add breakdown of allocations if the elements exist
-        if (document.getElementById('adminGivenTotal')) {
-            document.getElementById('adminGivenTotal').textContent = formatCurrency(adminGivenTotal);
-        }
-        if (document.getElementById('adminReversedTotal')) {
-            document.getElementById('adminReversedTotal').textContent = formatCurrency(adminReversedTotal);
-        }
-        if (document.getElementById('returnedBySubAdmin')) {
-            document.getElementById('returnedBySubAdmin').textContent = formatCurrency(returnedBySubAdmin);
-        }
 
         // Update usage bar color based on percentage
         usageBar.style.width = Math.min(usagePercent, 100) + '%';
@@ -460,75 +448,51 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize budget info
     async function initializeBudgetInfo() {
         try {
-            const currentUser = auth.currentUser;
-            if (!currentUser) return;
-
-            // Get user data including allocations and transactions
-            const [userSnapshot, allocationsSnapshot, purchasesSnapshot] = await Promise.all([
-                database.ref(`users/${currentUser.uid}`).once('value'),
-                database.ref(`budget_allocations/${currentUser.uid}`).once('value'),
-                database.ref(`purchases/${currentUser.uid}`).once('value')
-            ]);
-
+            const uid = firebase.auth().currentUser.uid;
+            
+            // Get initial user data
+            const userSnapshot = await database.ref(`users/${uid}`).once('value');
             userData = userSnapshot.val();
-            if (!userData) return;
 
-            // Calculate totals from allocations
-            const allocations = allocationsSnapshot.val() || {};
-            
-            // Calculate admin-given and admin-reversed amounts
-            let adminGivenTotal = 0;
-            let adminReversedTotal = 0;
-            let returnedBySubAdmin = 0;
+            if (!userData) {
+                showMessage('Error: User data not found', 'error');
+                return;
+            }
 
-            Object.values(allocations).forEach(allocation => {
-                if (allocation.type === 'allocation') {
-                    adminGivenTotal += allocation.amount;
-                } else if (allocation.type === 'reversal') {
-                    adminReversedTotal += allocation.amount;
-                } else if (allocation.type === 'return') {
-                    returnedBySubAdmin += allocation.amount;
-                }
+            // Set up real-time listener for budget allocations
+            database.ref(`budget_allocations/${uid}`).on('value', async (allocationsSnapshot) => {
+                const allocations = allocationsSnapshot.val() || {};
+                
+                // Calculate total allocated budget (original amount given by admin)
+                const totalAllocated = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type !== 'reversal' ? sum + allocation.amount : sum;
+                }, 0);
+
+                // Calculate available balance (allocated minus returns)
+                const availableBalance = Object.values(allocations).reduce((sum, allocation) => {
+                    return allocation.type === 'reversal' ? sum - allocation.amount : sum + allocation.amount;
+                }, 0);
+
+                // Update user data in memory and database
+                userData = {
+                    ...userData,
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                };
+
+                // Update the database with new values
+                await database.ref(`users/${uid}`).update({
+                    allocatedBudget: totalAllocated,
+                    availableBalance: availableBalance
+                });
+
+                // Update budget display
+                updateBudgetDisplay();
+                
+                // Generate and display budget history
+                generateBudgetHistory(allocations);
             });
 
-            // Calculate total purchases
-            let totalPurchases = 0;
-            const purchases = purchasesSnapshot.val() || {};
-            Object.values(purchases).forEach(purchase => {
-                totalPurchases += purchase.totalAmount || 0;
-            });
-
-            // Calculate net allocated: Admin Given - Admin Reversed - Returns
-            const netAllocated = adminGivenTotal - adminReversedTotal - returnedBySubAdmin;
-            
-            // Calculate available balance: Net Allocated - Purchases
-            const availableBalance = netAllocated - totalPurchases;
-
-            // Update user data in state and database
-            userData = {
-                ...userData,
-                allocatedBudget: netAllocated,
-                usedBudget: totalPurchases,
-                availableBalance: availableBalance,
-                adminGivenTotal: adminGivenTotal,
-                adminReversedTotal: adminReversedTotal,
-                returnedBySubAdmin: returnedBySubAdmin
-            };
-
-            // Update database with new calculations
-            await database.ref(`users/${currentUser.uid}`).update({
-                allocatedBudget: netAllocated,
-                usedBudget: totalPurchases,
-                availableBalance: availableBalance,
-                adminGivenTotal: adminGivenTotal,
-                adminReversedTotal: adminReversedTotal,
-                returnedBySubAdmin: returnedBySubAdmin
-            });
-
-            // Update UI
-            updateBudgetDisplay();
-            generateBudgetHistory(allocations);
-            
         } catch (error) {
             console.error('Error initializing budget info:', error);
             showMessage('Error loading budget information', 'error');
@@ -955,65 +919,5 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelector('[data-section="return"]').addEventListener('click', () => {
         initializeReturnSection();
     });
-
-    // Budget return functions
-    async function returnBudget(amount, reason = '') {
-        try {
-            const timestamp = Date.now();
-            const currentUser = auth.currentUser;
-
-            // Get current user data
-            const userSnapshot = await database.ref(`users/${currentUser.uid}`).once('value');
-            const userData = userSnapshot.val();
-            
-            if (!userData) {
-                throw new Error('User data not found');
-            }
-
-            const currentAvailable = userData.availableBalance || 0;
-            
-            if (currentAvailable < amount) {
-                throw new Error('Cannot return more than available balance');
-            }
-
-            // Update available balance
-            const newAvailableBalance = currentAvailable - amount;
-            
-            // Update user's budget information
-            await database.ref(`users/${currentUser.uid}`).update({
-                availableBalance: newAvailableBalance,
-                returnedBudget: (userData.returnedBudget || 0) + amount
-            });
-
-            // Record the return transaction
-            const returnRef = database.ref(`budget_returns/${currentUser.uid}`).push();
-            await returnRef.set({
-                amount: amount,
-                reason: reason,
-                timestamp: timestamp,
-                userEmail: currentUser.email
-            });
-
-            // Add to budget allocations for admin tracking
-            const allocationRef = database.ref(`budget_allocations/${currentUser.uid}`).push();
-            await allocationRef.set({
-                amount: amount,
-                type: 'return',
-                timestamp: timestamp,
-                userEmail: currentUser.email,
-                reason: reason
-            });
-
-            showMessage(`Successfully returned ${formatCurrency(amount)}`, 'success');
-            
-            // Refresh budget display
-            await initializeBudgetInfo();
-            return true;
-        } catch (error) {
-            console.error('Error in budget return:', error);
-            showMessage(error.message || 'Error processing budget return', 'error');
-            return false;
-        }
-    }
 });
 
