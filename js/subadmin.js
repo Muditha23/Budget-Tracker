@@ -26,7 +26,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const remainingAmount = document.getElementById('remainingAmount');
     const usagePercentage = document.getElementById('usagePercentage');
     const usageBar = document.getElementById('usageBar');
-    const totalSpentAmount = document.getElementById('totalSpentAmount');
 
     // Cart state
     let cart = [];
@@ -205,13 +204,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const potentialUsed = usedBudget + cartTotal;
         const potentialRemaining = totalAllocated - potentialUsed;
         
-        // Calculate usage percentage based on actual spending
-        const usagePercent = totalAllocated > 0 ? (usedBudget / totalAllocated) * 100 : 0;
+        // Calculate usage percentage based on actual spending (usedBudget) against total allocated
+        const usagePercent = (usedBudget / totalAllocated) * 100;
 
         // Update UI elements
         allocatedAmount.textContent = formatCurrency(totalAllocated);
         remainingAmount.textContent = formatCurrency(potentialRemaining);
-        totalSpentAmount.textContent = formatCurrency(usedBudget);
         usagePercentage.textContent = Math.round(usagePercent) + '%';
 
         // Update usage bar color based on percentage
