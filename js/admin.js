@@ -210,14 +210,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 return sum + allocation.amount;
             }, 0);
-
-            // Calculate actual used budget (considering returns)
-            const returns = Object.values(userAllocations)
-                .filter(allocation => allocation.type === 'reversal')
-                .reduce((sum, allocation) => sum + allocation.amount, 0);
-            
-            const actualUsedBudget = (user.usedBudget || 0) - returns;
-            const usagePercent = ((actualUsedBudget) / (totalAllocated || 1)) * 100;
+            const usagePercent = ((user.usedBudget || 0) / (totalAllocated || 1)) * 100;
             const statusColor = usagePercent >= 90 ? 'text-red-600' : usagePercent >= 80 ? 'text-yellow-600' : 'text-green-600';
             
             return `
@@ -225,7 +218,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div>
                         <p class="font-medium text-gray-800">${user.email}</p>
                         <p class="text-sm text-gray-600">Total Budget: ${formatCurrency(totalAllocated)}</p>
-                        <p class="text-sm text-gray-600">Used: ${formatCurrency(actualUsedBudget)}</p>
+                        <p class="text-sm text-gray-600">Used: ${formatCurrency(user.usedBudget || 0)}</p>
                     </div>
                     <p class="font-semibold ${statusColor}">${Math.round(usagePercent)}%</p>
                 </div>
@@ -751,14 +744,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     return sum + allocation.amount;
                 }, 0);
                 
-                // Calculate actual used budget (considering returns)
-                const returns = Object.values(userAllocations)
-                    .filter(allocation => allocation.type === 'reversal')
-                    .reduce((sum, allocation) => sum + allocation.amount, 0);
-                
-                const actualUsedBudget = (user.usedBudget || 0) - returns;
-                const remaining = totalAllocatedToUser - actualUsedBudget;
-                const usagePercent = totalAllocatedToUser > 0 ? (actualUsedBudget / totalAllocatedToUser) * 100 : 0;
+                const used = user.usedBudget || 0;
+                const remaining = totalAllocatedToUser - used;
+                const usagePercent = totalAllocatedToUser > 0 ? (used / totalAllocatedToUser) * 100 : 0;
                 
                 return `
                     <div class="bg-gray-50 rounded-lg p-4">
@@ -773,7 +761,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </div>
                             <div class="text-center">
                                 <p class="text-gray-600">Used</p>
-                                <p class="font-semibold text-red-600">${formatCurrency(actualUsedBudget)}</p>
+                                <p class="font-semibold text-red-600">${formatCurrency(used)}</p>
                             </div>
                             <div class="text-center">
                                 <p class="text-gray-600">Remaining</p>
